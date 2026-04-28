@@ -379,6 +379,7 @@
     text-underline-offset:2px;
   }
   .delbtn:hover{color:var(--accent)}
+  .review-actions{display:flex;gap:14px;margin-top:6px}
 
   /* Login modal */
   .login input{
@@ -1316,7 +1317,12 @@ async function loadReviews(){
 }
 async function saveReview(placeId, data){
   if(!STATE.currentUser){ showLogin(); return }
-  const id = "r_" + Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+  // Se esiste gia' una recensione di questo utente per la stessa pastina,
+  // la aggiorniamo (stesso id, stessa data di creazione) invece di crearne una nuova.
+  const existing = (STATE.reviewsByPlace[placeId] || [])
+    .find(r => r.userId === STATE.currentUser.id && r.pastryKey === data.pastryKey);
+  const id = existing ? existing.id
+    : "r_" + Date.now().toString(36) + Math.random().toString(36).slice(2,6);
   const rev = {
     id, placeId,
     pastryKey: data.pastryKey,
@@ -1326,12 +1332,13 @@ async function saveReview(placeId, data){
     score: data.score,
     text: data.text || "",
     photos: data.photos || [],
-    ts: Date.now(),
+    ts: existing ? existing.ts : Date.now(),
+    updatedAt: existing ? Date.now() : undefined,
   };
   const key = `review:${placeId}:${id}`;
   const ok = await sset(key, rev, true);
   if(!ok){ toast("Errore: recensione non salvata (forse foto troppo pesanti)"); return false }
-  // se l'utente ha recensito una pastina qui, di fatto sta dichiarando che è disponibile
+  // se l'utente ha recensito una pastina qui, di fatto sta dichiarando che e' disponibile
   await setAvailability(placeId, data.pastryKey, "yes", {silent:true});
   await loadReviews();
   return true;
@@ -2250,10 +2257,10 @@ function bindForm(p){
     document.querySelectorAll("#rev-crits-area .slider").forEach(sl=> crits[sl.dataset.crit] = parseFloat(sl.value));
     const score = Object.values(crits).reduce((a,b)=>a+b,0) / CRITERIA.length;
     const text = document.getElementById("rev-text").value.trim();
-    // se l'utente ha già recensito QUESTA pastina, sostituisci
+    // saveReview gestisce internamente l'update se esiste gia' una recensione
+    // dell'utente per questa pastina (stessa id, stessa data di creazione).
     const myRevs = (STATE.reviewsByPlace[p.id] || []).filter(r=>r.userId===STATE.currentUser.id);
     const mine = myRevs.find(r=>r.pastryKey===pastryKey);
-    if(mine) await sdel(`review:${p.id}:${mine.id}`, true);
     const ok = await saveReview(p.id, {pastryKey, crits, score, text, photos: pendingPhotos});
     if(ok){
       toast(mine?"Recensione aggiornata":"Recensione pubblicata!");
@@ -2271,6 +2278,7 @@ window.deleteReviewById = async (rid, pid)=>{
 
 function renderReview(r){
   const d = new Date(r.ts).toLocaleDateString("it-IT",{day:"numeric",month:"long",year:"numeric"});
+  const editedSuffix = r.updatedAt ? ` <span style="font-size:10px;color:var(--ink-soft);font-style:italic">(modificata)</span>` : "";
   const critLine = CRITERIA.map(c=>{
     const v = r.crits?.[c.key];
     return v!==undefined ? `<span>${c.label.toLowerCase()} <b>${v.toFixed(1)}</b></span>` : '';
@@ -2283,16 +2291,50 @@ function renderReview(r){
   return `
     <div class="review">
       <div class="review-head">
-        <div class="review-author"><span class="av">${initial}</span>${escapeHtml(r.userName)}<span class="review-date">· ${d}</span></div>
+        <div class="review-author"><span class="av">${initial}</span>${escapeHtml(r.userName)}<span class="review-date">· ${d}${editedSuffix}</span></div>
         <div class="review-score">${r.score.toFixed(1)}<span style="font-size:11px;color:var(--ink-soft);font-family:'Inter Tight';font-weight:400">/10</span></div>
       </div>
       <div class="review-crits">${critLine}</div>
       ${r.text? `<div class="review-body">${escapeHtml(r.text)}</div>` : ''}
       ${photos? `<div class="review-photos">${photos}</div>`:''}
-      ${canDel? `<button class="delbtn" onclick='deleteReviewById("${r.id}","${r.placeId}")'>elimina</button>` : ''}
+      ${canDel? `
+        <div class="review-actions">
+          <button class="delbtn" onclick='editReviewById("${r.id}","${r.placeId}")'>modifica</button>
+          <button class="delbtn" onclick='deleteReviewById("${r.id}","${r.placeId}")'>elimina</button>
+        </div>
+      ` : ''}
     </div>
   `;
 }
+
+window.editReviewById = (rid, pid)=>{
+  const rev = (STATE.reviewsByPlace[pid]||[]).find(r=>r.id===rid);
+  if(!rev) return;
+  // imposta il select alla pastina della recensione e scrolla al form
+  const sel = document.getElementById("rev-pastry");
+  if(sel){
+    sel.value = rev.pastryKey;
+    sel.dispatchEvent(new Event("change"));
+    // pre-carica le foto esistenti come pendingPhotos
+    pendingPhotos = (rev.photos || []).slice();
+    const previews = document.getElementById("photo-previews");
+    if(previews){
+      previews.innerHTML = "";
+      pendingPhotos.forEach(data=>{
+        const img = document.createElement("img");
+        img.src = data; img.className = "thumb";
+        img.title = "clicca per rimuovere";
+        img.addEventListener("click",()=>{
+          const idx = pendingPhotos.indexOf(data);
+          if(idx>=0) pendingPhotos.splice(idx,1);
+          img.remove();
+        });
+        previews.appendChild(img);
+      });
+    }
+    document.getElementById("formbox")?.scrollIntoView({behavior:"smooth",block:"start"});
+  }
+};
 
 window.viewImage = (src)=>{
   const d = document.createElement("div");
