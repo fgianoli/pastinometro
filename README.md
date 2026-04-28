@@ -33,11 +33,11 @@ log (`docker compose logs pastinometro`) e in `data/admin_password.txt`.
    - altrimenti lascialo vuoto e leggi la password generata da `data/admin_password.txt`
 3. `docker compose up -d --build`
 4. In Nginx Proxy Manager: nuova **Proxy Host**
-   - Domain: `pastinometro.studiogis.eu`
+   - Domain: `pastinometro.federicogianoli.eu`
    - Forward Hostname: `pastinometro` (se NPM è sulla stessa rete docker) oppure l'IP host con porta `8000`
    - SSL: Let's Encrypt, **Force SSL** + **HTTP/2** + **HSTS**
    - Websockets: non necessari
-5. Apri `https://pastinometro.studiogis.eu`, fai login con `admin` + password.
+5. Apri `https://pastinometro.federicogianoli.eu`, fai login con `admin` + password.
 
 > Se NPM e il container non sono sulla stessa rete docker, aggiungili a una
 > rete comune o usa `forward host: <IP host>` + porta esposta.
