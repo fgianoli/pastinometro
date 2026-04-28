@@ -1,0 +1,2154 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"/>
+<title>Il Pastinòmetro · Padova</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,800;1,9..144,400&family=Inter+Tight:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet"/>
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<style>
+  :root{
+    --bg:#f3ede0;
+    --bg-2:#ebe2cf;
+    --ink:#2a1e14;
+    --ink-soft:#5a4735;
+    --paper:#faf4e6;
+    --accent:#8b1e2e;      /* granato */
+    --accent-2:#c38a3a;    /* ambra */
+    --gold:#b07a2a;
+    --line:#c9b896;
+    --shadow: 0 2px 0 rgba(42,30,20,0.08), 0 10px 30px rgba(42,30,20,0.08);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;height:100%;background:var(--bg);color:var(--ink);font-family:'Inter Tight',system-ui,sans-serif;font-size:15px;line-height:1.45;-webkit-font-smoothing:antialiased}
+  body{
+    background:
+      radial-gradient(1200px 800px at 90% -10%, rgba(195,138,58,0.15), transparent 60%),
+      radial-gradient(900px 600px at -10% 110%, rgba(139,30,46,0.08), transparent 55%),
+      var(--bg);
+  }
+  h1,h2,h3,h4{font-family:'Fraunces',serif;font-weight:600;letter-spacing:-0.01em;margin:0}
+  h1{font-weight:800;font-variation-settings:"opsz" 144}
+  button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
+  input,textarea,select{font-family:inherit;font-size:inherit;color:inherit}
+
+  /* Layout */
+  #app{display:grid;grid-template-columns:420px 1fr;height:100vh;overflow:hidden}
+  @media (max-width:860px){
+    #app{grid-template-columns:1fr;grid-template-rows:auto 1fr}
+    #map{min-height:45vh}
+    #side{max-height:55vh}
+  }
+
+  /* Sidebar */
+  #side{
+    background:var(--paper);
+    border-right:1px solid var(--line);
+    display:flex;flex-direction:column;
+    overflow:hidden;
+    box-shadow: inset -24px 0 40px -40px rgba(42,30,20,0.4);
+  }
+  .hero{
+    padding:22px 26px 16px;
+    border-bottom:1px dashed var(--line);
+    background:
+      linear-gradient(180deg, rgba(176,122,42,0.08), transparent),
+      var(--paper);
+    position:relative;
+  }
+  .hero::before{
+    content:"";position:absolute;left:26px;right:26px;top:10px;height:2px;
+    background:repeating-linear-gradient(90deg, var(--ink) 0 4px, transparent 4px 8px);
+    opacity:.2;
+  }
+  .kicker{
+    font-family:'Fraunces',serif;font-style:italic;font-weight:500;
+    font-size:12px;letter-spacing:.18em;text-transform:uppercase;
+    color:var(--accent);margin-bottom:4px
+  }
+  .title{
+    font-size:38px;line-height:.95;margin:4px 0 6px;
+    font-variation-settings:"opsz" 144;
+  }
+  .title em{font-style:italic;color:var(--accent-2);font-weight:500}
+  .sub{color:var(--ink-soft);font-size:13px;max-width:34ch}
+  .sub b{color:var(--ink)}
+
+  /* User bar */
+  .userbar{
+    display:flex;align-items:center;gap:10px;
+    padding:10px 26px;border-bottom:1px solid var(--line);
+    background:var(--bg-2);
+    font-size:13px;
+  }
+  .avatar{
+    width:30px;height:30px;border-radius:50%;
+    background:var(--accent);color:var(--paper);
+    display:grid;place-items:center;font-family:'Fraunces',serif;font-weight:600;
+    font-size:14px;
+    box-shadow:var(--shadow);
+  }
+  .userbar .who{flex:1;min-width:0}
+  .userbar .who b{display:block;font-family:'Fraunces',serif;font-size:15px}
+  .userbar .who span{color:var(--ink-soft);font-size:12px}
+  .linkbtn{
+    font-size:12px;color:var(--accent);text-decoration:underline;
+    text-underline-offset:3px;text-decoration-color:var(--line);
+    background:none;padding:4px 0;
+  }
+  .linkbtn:hover{text-decoration-color:var(--accent)}
+
+  /* Controls */
+  .controls{padding:14px 26px;border-bottom:1px solid var(--line)}
+  .search{
+    display:flex;align-items:center;gap:8px;
+    background:var(--bg);
+    border:1px solid var(--line);border-radius:999px;
+    padding:8px 14px;
+  }
+  .search input{
+    flex:1;border:none;background:none;outline:none;font-size:14px;
+  }
+  .search .ico{opacity:.6;font-size:14px}
+
+  .chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+  .chip{
+    font-size:11px;letter-spacing:.08em;text-transform:uppercase;
+    padding:5px 11px;border-radius:999px;
+    border:1px solid var(--line);background:var(--bg);color:var(--ink-soft);
+    cursor:pointer;transition:all .15s;
+    font-weight:500;
+  }
+  .chip:hover{border-color:var(--ink)}
+  .chip.on{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+  .chip .dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:5px;vertical-align:middle}
+
+  .sortrow{
+    display:flex;justify-content:space-between;align-items:center;
+    margin-top:10px;font-size:12px;color:var(--ink-soft);
+  }
+  .sortrow select{
+    border:none;background:none;font-size:12px;color:var(--ink);
+    font-weight:500;border-bottom:1px dotted var(--line);
+    padding:2px 0;outline:none;
+  }
+
+  /* List */
+  .list{flex:1;overflow-y:auto;padding:8px 0 80px}
+  .list::-webkit-scrollbar{width:8px}
+  .list::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px}
+
+  .item{
+    padding:14px 26px;border-bottom:1px solid rgba(201,184,150,0.4);
+    cursor:pointer;position:relative;
+    transition:background .12s;
+  }
+  .item:hover{background:rgba(176,122,42,0.05)}
+  .item.active{background:rgba(139,30,46,0.06)}
+  .item.active::before{
+    content:"";position:absolute;left:0;top:14px;bottom:14px;width:3px;background:var(--accent)
+  }
+  .item-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+  .item-name{font-family:'Fraunces',serif;font-size:18px;font-weight:500;line-height:1.15;color:var(--ink)}
+  .item-cat{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-soft);white-space:nowrap}
+  .item-addr{font-size:12px;color:var(--ink-soft);margin-top:2px}
+  .item-score{
+    display:flex;align-items:center;gap:6px;margin-top:6px;font-size:12px;
+  }
+  .score-num{font-family:'Fraunces',serif;font-weight:600;font-size:15px;color:var(--accent)}
+  .score-num.none{color:var(--ink-soft);font-style:italic;font-weight:400}
+  .score-n{color:var(--ink-soft)}
+
+  /* Map */
+  #map{position:relative;height:100%;width:100%;background:var(--bg-2)}
+  .maplibregl-popup{max-width:240px!important}
+  .maplibregl-popup-content{
+    background:var(--paper)!important;
+    padding:10px 14px!important;
+    border:1px solid var(--line)!important;
+    border-radius:6px!important;
+    font-family:'Inter Tight',sans-serif!important;
+    box-shadow:var(--shadow)!important;
+  }
+  .maplibregl-popup-tip{border-top-color:var(--paper)!important;border-bottom-color:var(--paper)!important}
+  .poptitle{font-family:'Fraunces',serif;font-size:16px;font-weight:500;margin-bottom:4px;color:var(--ink)}
+  .popcat{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent)}
+  .popbtn{
+    margin-top:8px;font-size:12px;color:var(--accent);
+    border:1px solid var(--accent);padding:4px 10px;border-radius:3px;
+    background:var(--paper);
+  }
+  .popbtn:hover{background:var(--accent);color:var(--paper)}
+
+  /* Map markers */
+  .mk{
+    width:22px;height:22px;border-radius:50%;
+    display:grid;place-items:center;
+    border:2px solid var(--paper);
+    box-shadow:0 2px 6px rgba(42,30,20,0.35);
+    cursor:pointer;
+    font-size:11px;
+    transition:transform .15s;
+  }
+  .mk:hover{transform:scale(1.25)}
+  .mk.bakery{background:#c38a3a}
+  .mk.pastry{background:#8b1e2e}
+  .mk.cafe{background:#5a4735}
+  .mk.bar{background:#2a5d4a}
+  .mk.rated{width:30px;height:30px;border-width:3px}
+  .mk.rated::after{
+    content:"";position:absolute;inset:-4px;border-radius:50%;
+    border:1px solid currentColor;opacity:.4;pointer-events:none;
+  }
+  .mk .badge{
+    position:absolute;bottom:-6px;right:-6px;
+    background:var(--paper);color:var(--ink);
+    font-family:'Fraunces',serif;font-weight:600;font-size:10px;
+    width:18px;height:18px;border-radius:50%;
+    display:grid;place-items:center;
+    box-shadow:0 1px 3px rgba(0,0,0,.3);
+  }
+
+  /* Floating legend */
+  .legend{
+    position:absolute;top:14px;right:14px;
+    background:var(--paper);border:1px solid var(--line);
+    border-radius:4px;padding:10px 14px;
+    font-size:12px;box-shadow:var(--shadow);
+    z-index:5;
+  }
+  .legend b{font-family:'Fraunces',serif;font-weight:600;display:block;margin-bottom:6px;font-size:13px}
+  .legend .row{display:flex;align-items:center;gap:6px;margin:3px 0;color:var(--ink-soft)}
+  .legend .sw{width:10px;height:10px;border-radius:50%;flex:none}
+
+  /* Modal */
+  .overlay{
+    position:fixed;inset:0;background:rgba(42,30,20,0.55);
+    display:grid;place-items:center;z-index:1000;
+    padding:20px;
+    backdrop-filter:blur(3px);
+    animation:fadein .2s ease-out;
+  }
+  @keyframes fadein{from{opacity:0}to{opacity:1}}
+  @keyframes slideup{from{transform:translateY(20px);opacity:0}to{transform:none;opacity:1}}
+  .modal{
+    background:var(--paper);border:1px solid var(--line);
+    border-radius:4px;
+    width:100%;max-width:580px;max-height:90vh;
+    overflow-y:auto;
+    box-shadow:0 30px 80px rgba(0,0,0,.3);
+    animation:slideup .25s ease-out;
+  }
+  .modal-head{
+    padding:22px 28px 14px;border-bottom:1px solid var(--line);
+    position:relative;
+  }
+  .modal-head .kicker{margin-bottom:6px}
+  .modal-head h2{font-size:26px;line-height:1.05}
+  .modal-head .meta{margin-top:6px;font-size:13px;color:var(--ink-soft)}
+  .closex{
+    position:absolute;top:14px;right:14px;
+    width:30px;height:30px;border-radius:50%;
+    display:grid;place-items:center;font-size:18px;
+    color:var(--ink-soft);
+  }
+  .closex:hover{background:var(--bg-2);color:var(--ink)}
+  .modal-body{padding:20px 28px}
+
+  /* Score ring */
+  .score-wrap{display:flex;align-items:center;gap:16px;margin-bottom:18px;padding-bottom:18px;border-bottom:1px dashed var(--line)}
+  .score-ring{
+    width:86px;height:86px;border-radius:50%;
+    background:conic-gradient(var(--accent) calc(var(--pct, 0) * 1%), var(--bg-2) 0);
+    display:grid;place-items:center;position:relative;flex:none;
+  }
+  .score-ring::before{
+    content:"";position:absolute;inset:8px;background:var(--paper);border-radius:50%;
+  }
+  .score-ring .n{position:relative;font-family:'Fraunces',serif;font-weight:600;font-size:24px;color:var(--accent)}
+  .score-ring.none::before{background:var(--bg-2)}
+  .score-ring.none .n{color:var(--ink-soft);font-size:13px;font-style:italic}
+  .score-meta h4{font-size:15px;font-family:'Fraunces',serif;font-weight:500;margin-bottom:3px}
+  .score-meta .bars{display:grid;grid-template-columns:1fr auto;gap:3px 10px;margin-top:6px;font-size:12px;color:var(--ink-soft)}
+  .score-meta .bar{
+    background:var(--bg-2);height:6px;border-radius:3px;overflow:hidden;position:relative;min-width:100px;align-self:center;
+  }
+  .score-meta .bar span{display:block;height:100%;background:var(--accent-2);border-radius:3px}
+
+  /* Review form */
+  .formbox{background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:16px;margin-bottom:20px}
+  .formbox h3{font-size:16px;margin-bottom:14px}
+  .crit{margin-bottom:12px}
+  .crit-label{display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px}
+  .crit-label b{font-weight:500}
+  .crit-val{font-family:'Fraunces',serif;font-weight:600;color:var(--accent);font-size:15px}
+  .slider{
+    appearance:none;width:100%;height:5px;background:var(--bg-2);border-radius:3px;outline:none;
+    cursor:pointer;
+  }
+  .slider::-webkit-slider-thumb{
+    appearance:none;width:18px;height:18px;border-radius:50%;
+    background:var(--accent);border:2px solid var(--paper);box-shadow:0 1px 3px rgba(0,0,0,.2);
+    cursor:pointer;
+  }
+  .slider::-moz-range-thumb{
+    width:18px;height:18px;border-radius:50%;
+    background:var(--accent);border:2px solid var(--paper);
+    cursor:pointer;
+  }
+  .textfield{
+    width:100%;border:1px solid var(--line);background:var(--paper);
+    border-radius:3px;padding:10px 12px;font-size:14px;
+    resize:vertical;min-height:70px;outline:none;
+    font-family:inherit;
+  }
+  .textfield:focus{border-color:var(--accent)}
+  .photoinput{
+    display:flex;gap:10px;align-items:center;margin-top:10px;flex-wrap:wrap;
+  }
+  .photoinput label{
+    font-size:12px;border:1px dashed var(--line);padding:8px 12px;border-radius:3px;
+    cursor:pointer;color:var(--ink-soft);
+  }
+  .photoinput label:hover{border-color:var(--accent);color:var(--accent)}
+  .photoinput input[type=file]{display:none}
+  .thumb{
+    width:52px;height:52px;border-radius:3px;object-fit:cover;
+    border:1px solid var(--line);
+  }
+  .btn-submit{
+    background:var(--accent);color:var(--paper);
+    padding:10px 22px;border-radius:3px;font-size:14px;font-weight:500;
+    letter-spacing:.02em;margin-top:8px;
+  }
+  .btn-submit:hover{background:var(--ink)}
+  .btn-submit:disabled{opacity:.5;cursor:not-allowed}
+
+  /* Reviews list */
+  .reviews h3{font-size:15px;margin-bottom:12px;color:var(--ink-soft);font-weight:500}
+  .review{
+    padding:14px 0;border-top:1px solid var(--line);
+  }
+  .review:first-child{border-top:none}
+  .review-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
+  .review-author{font-family:'Fraunces',serif;font-weight:500;font-size:15px}
+  .review-author .av{
+    display:inline-block;width:22px;height:22px;border-radius:50%;
+    background:var(--accent-2);color:var(--paper);
+    text-align:center;line-height:22px;font-size:11px;margin-right:7px;
+    vertical-align:middle;
+  }
+  .review-score{font-family:'Fraunces',serif;font-weight:600;color:var(--accent);font-size:16px}
+  .review-date{font-size:11px;color:var(--ink-soft);margin-left:8px}
+  .review-crits{display:flex;gap:10px;font-size:11px;color:var(--ink-soft);margin:4px 0 6px;flex-wrap:wrap}
+  .review-crits span b{color:var(--ink);font-family:'Fraunces',serif;font-weight:600}
+  .review-body{font-size:13.5px;line-height:1.55;color:var(--ink);margin-top:4px}
+  .review-photos{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+  .review-photos img{width:70px;height:70px;object-fit:cover;border-radius:3px;cursor:pointer;border:1px solid var(--line)}
+  .delbtn{
+    font-size:11px;color:var(--ink-soft);margin-top:6px;text-decoration:underline;
+    text-underline-offset:2px;
+  }
+  .delbtn:hover{color:var(--accent)}
+
+  /* Login modal */
+  .login input{
+    width:100%;padding:10px 12px;border:1px solid var(--line);
+    background:var(--paper);border-radius:3px;margin-bottom:10px;outline:none;
+  }
+  .login input:focus{border-color:var(--accent)}
+  .hint{font-size:12px;color:var(--ink-soft);margin-top:8px}
+  .hint a{color:var(--accent);text-underline-offset:2px}
+  .auth-tabs{display:flex;gap:4px;margin:4px 0 14px;border-bottom:1px solid var(--line)}
+  .auth-tab{
+    padding:8px 12px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;
+    background:none;color:var(--ink-soft);border-bottom:2px solid transparent;
+    margin-bottom:-1px;font-weight:500;
+  }
+  .auth-tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+  .auth-tab:hover{color:var(--ink)}
+  .admin-badge{
+    display:inline-block;font-size:10px;letter-spacing:.1em;text-transform:uppercase;
+    background:var(--accent);color:var(--paper);padding:1px 6px;border-radius:2px;
+    margin-left:6px;font-weight:600;vertical-align:middle;
+  }
+
+  /* Ranking tab */
+  .rankbtn{
+    padding:8px 14px;font-size:12px;letter-spacing:.12em;text-transform:uppercase;
+    background:var(--ink);color:var(--paper);border-radius:3px;font-weight:500;
+  }
+  .rankbtn:hover{background:var(--accent)}
+
+  .addbtn{
+    margin-top:12px;width:100%;
+    padding:10px 14px;font-size:12px;letter-spacing:.06em;
+    background:var(--paper);color:var(--accent);
+    border:1px dashed var(--accent);border-radius:3px;
+    font-family:'Fraunces',serif;font-style:italic;font-weight:500;
+    transition:all .15s;
+  }
+  .addbtn:hover{background:var(--accent);color:var(--paper);border-style:solid}
+
+  /* Map picker mode */
+  #map.picking{cursor:crosshair}
+  #map.picking::after{
+    content:"clicca sulla mappa per posizionare il luogo · ESC per annullare";
+    position:absolute;top:14px;left:50%;transform:translateX(-50%);
+    background:var(--ink);color:var(--paper);
+    padding:8px 16px;border-radius:3px;font-size:13px;
+    font-family:'Fraunces',serif;font-style:italic;
+    z-index:10;box-shadow:var(--shadow);
+    pointer-events:none;
+    animation:slideup .25s ease-out;
+  }
+  .pickmarker{
+    width:30px;height:30px;border-radius:50% 50% 50% 0;
+    background:var(--accent);transform:rotate(-45deg);
+    border:3px solid var(--paper);
+    box-shadow:0 4px 10px rgba(0,0,0,.3);
+    animation:bounce .5s ease-out;
+  }
+  @keyframes bounce{
+    0%{transform:rotate(-45deg) scale(0)}
+    60%{transform:rotate(-45deg) scale(1.2)}
+    100%{transform:rotate(-45deg) scale(1)}
+  }
+
+  /* Marker custom (user-added) */
+  .mk.custom{
+    background-image:linear-gradient(135deg, currentColor 50%, transparent 50%);
+  }
+  .mk.custom::before{
+    content:"✱";position:absolute;top:-3px;right:-3px;
+    color:var(--ink);background:var(--paper);
+    width:12px;height:12px;border-radius:50%;
+    font-size:9px;display:grid;place-items:center;
+    line-height:1;font-weight:bold;
+    box-shadow:0 1px 2px rgba(0,0,0,.3);
+  }
+
+  /* Add place form */
+  .field{margin-bottom:14px}
+  .field label{
+    display:block;font-size:12px;font-weight:500;color:var(--ink-soft);
+    margin-bottom:4px;letter-spacing:.04em;
+  }
+  .field label .req{color:var(--accent)}
+  .field input[type=text], .field input[type=tel], .field input[type=url], .field textarea, .field select{
+    width:100%;padding:9px 12px;border:1px solid var(--line);
+    background:var(--paper);border-radius:3px;outline:none;
+    font-size:14px;font-family:inherit;
+  }
+  .field input:focus, .field textarea:focus, .field select:focus{border-color:var(--accent)}
+  .field .hint{font-size:11px;color:var(--ink-soft);margin-top:3px;font-style:italic}
+  .field-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  @media (max-width:520px){.field-row{grid-template-columns:1fr}}
+  .coord-display{
+    display:flex;align-items:center;gap:10px;
+    padding:10px 12px;background:var(--bg);border:1px solid var(--line);border-radius:3px;
+    font-family:'Fraunces',serif;font-size:13px;
+  }
+  .coord-display.empty{color:var(--ink-soft);font-style:italic}
+  .coord-display b{color:var(--accent);font-variant-numeric:tabular-nums}
+  .pickbtn{
+    background:var(--ink);color:var(--paper);
+    padding:6px 12px;border-radius:3px;font-size:12px;
+    letter-spacing:.04em;font-weight:500;
+  }
+  .pickbtn:hover{background:var(--accent)}
+  .dup-warn{
+    background:rgba(176,122,42,0.12);
+    border-left:3px solid var(--gold);
+    padding:10px 14px;margin:10px 0;border-radius:3px;
+    font-size:13px;
+  }
+  .dup-warn b{font-family:'Fraunces',serif;font-weight:600}
+  .dup-warn .nearby{font-size:12px;color:var(--ink-soft);margin-top:4px}
+  .added-by{
+    font-size:11px;color:var(--ink-soft);font-style:italic;
+    margin-top:4px;
+  }
+  .added-by .you{color:var(--accent);font-weight:500;font-style:normal}
+  .podium{display:grid;gap:10px;margin-bottom:16px}
+  .rank-item{
+    display:grid;grid-template-columns:40px 1fr auto;gap:14px;
+    padding:14px;border:1px solid var(--line);border-radius:3px;
+    align-items:center;background:var(--bg);cursor:pointer;
+  }
+  .rank-item:hover{border-color:var(--accent)}
+  .rank-n{font-family:'Fraunces',serif;font-weight:800;font-size:28px;color:var(--accent);text-align:center;font-variation-settings:"opsz" 144}
+  .rank-n.gold{color:var(--gold)}
+  .rank-info b{font-family:'Fraunces',serif;font-weight:500;font-size:17px;display:block}
+  .rank-info span{font-size:12px;color:var(--ink-soft)}
+  .rank-score{font-family:'Fraunces',serif;font-weight:600;font-size:20px;color:var(--accent)}
+  .rank-score span{font-size:11px;color:var(--ink-soft);font-family:'Inter Tight';font-weight:400;display:block;text-align:right}
+
+  /* Empty states */
+  .empty{padding:40px 26px;text-align:center;color:var(--ink-soft);font-style:italic;font-family:'Fraunces',serif}
+  .empty::before{content:"◦ ◦ ◦";display:block;margin-bottom:10px;letter-spacing:8px;color:var(--line)}
+
+  /* Tabs in modal */
+  .tabs{display:flex;border-bottom:1px solid var(--line);margin-bottom:16px;gap:4px}
+  .tab{
+    padding:8px 14px;font-size:12px;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--ink-soft);border-bottom:2px solid transparent;margin-bottom:-1px;
+    cursor:pointer;font-weight:500;
+  }
+  .tab.active{color:var(--ink);border-bottom-color:var(--accent)}
+
+  /* Toast */
+  .toast{
+    position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
+    background:var(--ink);color:var(--paper);padding:10px 20px;border-radius:3px;
+    font-size:13px;box-shadow:var(--shadow);z-index:2000;
+    animation:slideup .25s ease-out;
+  }
+
+  /* Image viewer */
+  .imgview{
+    position:fixed;inset:0;background:rgba(0,0,0,.9);z-index:3000;
+    display:grid;place-items:center;padding:20px;cursor:pointer;
+  }
+  .imgview img{max-width:100%;max-height:100%;object-fit:contain}
+
+  /* === FILTRO PASTINA === */
+  .pastry-filter-row{
+    display:flex;align-items:center;gap:10px;margin-top:8px;
+    font-size:12px;color:var(--ink-soft);
+  }
+  .pastry-filter-row select{
+    flex:1;border:none;background:none;font-size:12px;color:var(--ink);
+    font-weight:500;border-bottom:1px dotted var(--line);padding:2px 0;outline:none;
+    font-family:inherit;
+  }
+  .pastry-filter-row select:focus{border-bottom-color:var(--accent)}
+  .pastry-filter-row.active{color:var(--accent)}
+  .pastry-filter-row.active select{border-bottom-color:var(--accent);color:var(--accent)}
+
+  .pastry-select{
+    width:100%;padding:9px 12px;border:1px solid var(--line);
+    background:var(--paper);border-radius:3px;outline:none;
+    font-size:14px;font-family:inherit;
+  }
+
+  /* === MATRICE DISPONIBILITÀ === */
+  .avail-grid{
+    background:var(--bg);border:1px solid var(--line);border-radius:3px;
+    margin-bottom:18px;overflow:hidden;
+  }
+  .avail-head{
+    padding:14px 16px 8px;border-bottom:1px solid var(--line);
+    background:linear-gradient(180deg, rgba(176,122,42,0.08), transparent);
+  }
+  .avail-head h3{font-size:16px;font-family:'Fraunces',serif;font-weight:500;margin-bottom:2px}
+  .avail-sub{font-size:12px;color:var(--ink-soft);font-style:italic;margin:0}
+
+  .avail-row{
+    display:flex;align-items:center;gap:10px;
+    padding:10px 14px;border-bottom:1px solid rgba(201,184,150,0.4);
+    transition:background .12s;
+  }
+  .avail-row:last-of-type{border-bottom:none}
+  .avail-row:hover{background:rgba(176,122,42,0.04)}
+  .avail-left{display:flex;align-items:center;gap:10px;flex:1;min-width:0}
+  .avail-emoji{font-size:22px;flex:none;width:28px;text-align:center}
+  .avail-info{flex:1;min-width:0}
+  .avail-info b{
+    font-family:'Fraunces',serif;font-weight:500;font-size:15px;
+    color:var(--ink);display:block;line-height:1.2;
+  }
+  .avail-info > span{
+    display:block;font-size:11px;color:var(--ink-soft);
+    line-height:1.35;margin-top:2px;
+  }
+  .avail-info .avail-by{
+    font-style:italic;color:var(--gold);font-size:10.5px;margin-top:2px;display:block;
+  }
+  .avail-custom{color:var(--accent);font-size:11px;letter-spacing:.5px;font-weight:500;margin-left:2px}
+  .avail-rating{
+    font-family:'Fraunces',serif;font-weight:600;color:var(--accent);
+    font-size:14px;flex:none;padding-right:6px;text-align:right;
+  }
+  .avail-rating span{
+    font-size:10px;color:var(--ink-soft);font-family:'Inter Tight';font-weight:400;
+    margin-left:1px;
+  }
+  .avail-toggles{display:flex;gap:3px;flex:none;align-items:center}
+  .avail-btn{
+    width:28px;height:28px;border-radius:3px;
+    border:1px solid var(--line);background:var(--paper);
+    font-size:14px;font-weight:600;
+    display:grid;place-items:center;
+    transition:all .12s;
+    color:var(--ink-soft);cursor:pointer;
+  }
+  .avail-btn:hover{border-color:var(--ink);color:var(--ink)}
+  .avail-btn.yes.on{background:#2a5d4a;border-color:#2a5d4a;color:#fff}
+  .avail-btn.no.on{background:var(--accent);border-color:var(--accent);color:#fff}
+  .avail-btn.unk.on{background:var(--ink-soft);border-color:var(--ink-soft);color:#fff}
+  .avail-del{
+    width:24px;height:28px;font-size:12px;background:none;
+    color:var(--ink-soft);margin-left:4px;cursor:pointer;
+    border-radius:3px;border:none;
+  }
+  .avail-del:hover{color:var(--accent);background:rgba(139,30,46,0.1)}
+
+  .avail-addrow{
+    padding:10px 14px;border-top:1px dashed var(--line);
+    background:rgba(176,122,42,0.04);
+  }
+  .addpastrybtn{
+    width:100%;padding:7px 12px;font-size:12px;
+    background:none;color:var(--accent);
+    border:1px dashed var(--accent);border-radius:3px;
+    font-family:'Fraunces',serif;font-style:italic;
+    transition:all .15s;cursor:pointer;
+  }
+  .addpastrybtn:hover{background:var(--accent);color:var(--paper);border-style:solid}
+
+  /* Blocchi recensioni raggruppate per pastina */
+  .pastry-block{
+    margin-bottom:18px;padding-bottom:6px;
+  }
+  .pastry-block:last-child{margin-bottom:0}
+  .pastry-block-head{
+    display:flex;align-items:baseline;gap:10px;
+    padding:6px 0 6px;margin-bottom:4px;
+    border-bottom:2px solid var(--line);
+  }
+  .pastry-block-head h4{
+    font-family:'Fraunces',serif;font-weight:500;font-size:17px;flex:1;
+  }
+  .pastry-block-avg{
+    font-family:'Fraunces',serif;font-weight:600;color:var(--accent);font-size:15px;
+  }
+  .pastry-block-avg span{
+    font-size:11px;color:var(--ink-soft);font-family:'Inter Tight';font-weight:400;
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <aside id="side">
+    <div class="hero">
+      <div class="kicker">Guida alle pastine di riso · Padova</div>
+      <h1 class="title">Il<br/>Pastin<em>òmetro</em></h1>
+      <p class="sub">Censimento dei <b>forni, bar e pasticcerie</b> della città, con recensione critica delle pastine di riso. Dati geografici da OpenStreetMap.</p>
+    </div>
+    <div class="userbar" id="userbar"></div>
+    <div class="controls">
+      <div class="search">
+        <span class="ico">⌕</span>
+        <input id="q" placeholder="cerca un locale, una via..." autocomplete="off"/>
+      </div>
+      <div class="chips" id="chips">
+        <button class="chip on" data-cat="all">Tutti <span id="cnt-all"></span></button>
+        <button class="chip" data-cat="pastry"><span class="dot" style="background:#8b1e2e"></span>Pasticcerie</button>
+        <button class="chip" data-cat="bakery"><span class="dot" style="background:#c38a3a"></span>Forni</button>
+        <button class="chip" data-cat="cafe"><span class="dot" style="background:#5a4735"></span>Caffè</button>
+        <button class="chip" data-cat="bar"><span class="dot" style="background:#2a5d4a"></span>Bar</button>
+      </div>
+      <div class="sortrow">
+        <span>ordina per</span>
+        <select id="sort">
+          <option value="name">nome (A-Z)</option>
+          <option value="score">voto medio ↓</option>
+          <option value="reviews">n. recensioni ↓</option>
+          <option value="recent">recensione recente</option>
+        </select>
+        <button class="rankbtn" id="rank-btn">Classifica</button>
+      </div>
+      <div class="pastry-filter-row">
+        <span>solo dove trovo</span>
+        <select id="pastry-filter">
+          <option value="">— qualsiasi pastina —</option>
+        </select>
+      </div>
+      <button class="addbtn" id="add-btn">＋ Aggiungi un forno o pasticceria mancante</button>
+    </div>
+    <div class="list" id="list"></div>
+  </aside>
+  <main id="map">
+    <div class="legend">
+      <b>Categorie</b>
+      <div class="row"><span class="sw" style="background:#8b1e2e"></span>Pasticceria</div>
+      <div class="row"><span class="sw" style="background:#c38a3a"></span>Forno</div>
+      <div class="row"><span class="sw" style="background:#5a4735"></span>Caffè</div>
+      <div class="row"><span class="sw" style="background:#2a5d4a"></span>Bar</div>
+      <div class="row" style="margin-top:6px;font-size:11px;color:var(--ink-soft)"><i>● grande = recensito</i></div>
+    </div>
+  </main>
+</div>
+
+<script>
+// ====== DATI OSM (374 luoghi, compressi) ======
+const RAW_PLACES = [["n10155200041","20quadricafe'",45.391597,11.892896,"cafe","Via Giuseppe Perin 1","","",""],["n13261380561","Abracalabria",45.408025,11.892451,"bar","","","",""],["n8894565021","Agli Amici",45.407545,11.88627,"bar","Via Giambattista Belzoni 22","","",""],["n7217039933","Al 119 Bar",45.388627,11.895153,"cafe","","","",""],["n7114319700","Al Bareto",45.410394,11.893041,"cafe","Via Venezia 4","","","Mo-Sa 07:00-22:00"],["n1451930863","Al Buscaglione",45.405144,11.872472,"bar","Via Marsala 50","","","Tu-Sa 18:00-23:30; Su 17:30-22:30"],["w131987076","Al Santo",45.402289,11.883204,"bakery","","","",""],["n11811617689","Al Trombon",45.413289,11.900691,"bar","","","","Mo-Fr 07:00-20:00"],["n5535516275","Al Vescovado",45.405921,11.871296,"bar","Via del Vescovado 12","","",""],["w132000854","Albabar Cafe",45.411227,11.874244,"cafe","","","",""],["n12213750913","Alice",45.413301,11.893312,"cafe","","","",""],["n11592994626","Alla Stanga",45.409189,11.902852,"cafe","","","",""],["n5194458363","Alle Dolomiti Café",45.406028,11.877566,"cafe","Riviera Tito Livio 4","","",""],["w152745334","Amsterdam Café",45.411041,11.860715,"bar","","+39 049 872 3996","http://www.amsterdamcafe.it/",""],["n6376230536","Antica Pasticceria Manzato",45.407671,11.89235,"pastry","","","","Mo-Fr 07:00-18:00; Su 08:00-13:00; PH closed"],["n691987796","Antico Forno",45.406649,11.857902,"bakery","","","","Mo-Sa 08:00-13:00,16:00-19:30"],["n3398169091","Antico Forno",45.396212,11.828764,"cafe","Via dei Colli 120","+39 049 8686850","",""],["n4727764313","Antico Forno Pasticceria",45.408935,11.879851,"cafe","Via Carlo Cassan 1","","",""],["n1982712757","ArtCafè",45.441806,11.891072,"cafe","Via Telemaco Signorini 8","","","Mo-Fr 07:00-22:00; Sa 07:30-22:00; Su 09:30-20:00"],["n11435961689","Atoms Taproom",45.377201,11.891378,"bar","","","https://www.atomsbrewing.it/taproom/","We,Th 18:30-23:30; Fr 18:30-24:00; Sa 00:00-01:00,18:00-24:00; Su 00:00-01:00,18:00-23:00"],["n5967125362","BIcenter",45.415055,11.933383,"cafe","","","",""],["n12041108969","Babuska Cafè",45.405524,11.885387,"cafe","Via Aristide Gabelli 47","+39 049 875 6915","","Mo-Fr 07:00-17:00"],["n442872482","Baessato Padova",45.411041,11.876614,"bar","Largo Europa 14","","https://www.h222.it",""],["n1503764270","Bakarà",45.407487,11.873641,"bar","Piazza dei Signori 9","","",""],["n12987796798","Bamboo",45.415649,11.863591,"bar","","","",""],["n2522378801","Bar",45.419701,11.876898,"cafe","","","",""],["n1121656126","Bar \"Al Tranquillino\"",45.410297,11.878312,"cafe","","","",""],["n12213750917","Bar 136",45.412292,11.893028,"bar","","","",""],["n7830142028","Bar 89",45.430448,11.871996,"bar","Via Istria 89","","",""],["n2522335157","Bar Al Municipio",45.406997,11.876172,"cafe","Via del Municipio 8","","",""],["n8869577602","Bar Al Palazzetto",45.428638,11.88697,"bar","","","",""],["n1218298739","Bar Barcellona",45.407297,11.860354,"cafe","Via Brigata Padova 3","","",""],["n8833240977","Bar Bello",45.43267,11.870942,"bar","","","",""],["n11749895034","Bar Briciola",45.403393,11.888309,"cafe","","","","Mo-Fr 07:00-20:00"],["n1989632423","Bar Buonaroti",45.424692,11.878117,"cafe","","","","Tu-Sa 05:30-20:30"],["n1460260769","Bar Caffè Gattamelata",45.402008,11.880188,"cafe","Piazza del Santo 5","","","Sa-Th 07:30-19:00"],["n2320400298","Bar Caffè Mirò",45.358338,11.893348,"bar","","","",""],["n1650283356","Bar Caffé al Duomo",45.406695,11.872748,"cafe","Piazza del Duomo 8","","",""],["n2372274370","Bar Canaja",45.407102,11.875312,"cafe","Piazza delle Erbe 39","+39 347 2601885","https://www.barcanaja.it/",""],["n3389757125","Bar Centrale",45.381527,11.901336,"cafe","Via Piovese 7","","",""],["n13357333205","Bar Centrale",45.40114,11.945525,"cafe","","","",""],["n10762210450","Bar Clistina",45.406998,11.892367,"bar","Via Ognissanti","","","PH,Mo-Su 07:00-02:00"],["n4625386279","Bar Cocchia",45.381661,11.851999,"bar","Via Asolo","","",""],["n8668554210","Bar Crescini",45.389718,11.890994,"cafe","","","",""],["n5589635422","Bar Duomo",45.406296,11.872349,"bar","Via Domenico Vandelli 2","","",""],["n12075133478","Bar Elisa Pavin Cafè",45.444555,11.892355,"bar","","","",""],["n1927319588","Bar Firenze",45.395993,11.862505,"cafe","Via Savona 6","","","Mo off; Tu-Th 07:00-22:00; Fr 07:00-23:00; Sa 07:30-23:00; Su 07:30-22:00"],["n6134753237","Bar Fortuna",45.40067,11.855722,"cafe","","","",""],["n1862640483","Bar Gozzi",45.413573,11.883611,"bar","Via Enrico degli Scrovegni 1","","",""],["n3741913962","Bar Ingegneria",45.409653,11.888543,"cafe","","","","Mo-Fr 07:30-19:00+"],["n13304712826","Bar Italico Padova",45.417231,11.881459,"cafe","","","",""],["n8092996725","Bar L'Asinella",45.412605,11.839607,"bar","","","",""],["n2144631175","Bar La Piazzetta",45.410569,11.914507,"cafe","","","",""],["n4254712518","Bar Mantegna",45.410057,11.879814,"cafe","Piazza Eremitani 25","","",""],["n5747679243","Bar Massimo",45.404462,11.887677,"cafe","Via Gabriele Falloppio 85","","","Mo-Fr 06:00-15:00; Sa 06:00-11:30"],["n442052059","Bar Maximilian",45.415996,11.87944,"bar","Corso Del Popolo 12","+39 049 650151","",""],["n2372274358","Bar Nazionale",45.407117,11.875557,"cafe","Piazza delle Erbe 41","","",""],["n1218298768","Bar Palestro",45.407238,11.859322,"cafe","Via Palestro 24","+39 0498 726123","",""],["n7021576776","Bar Pasticceria Guariento",45.383888,11.868381,"pastry","Via Guizza 74","+39 049 684395","https://www.pasticceriaguariento-padova.it/","Apr-Oct 07:00-13:30,15:30-21:00; Nov-Mar 07:00-13:30,15:00-21:00; Tu off"],["n13687490862","Bar Pasticceria Mimosa",45.380896,11.883707,"pastry","","","",""],["n6375379137","Bar Pausa Caffè",45.42811,11.913995,"bar","","+39 347 705 0560","","Mo-Fr 06:00-15:00; Sa 06:00-12:00"],["n12942694102","Bar Pizzeria 21",45.416334,11.881204,"bar","Piazzale della Stazione 8","+390498774297","",""],["n1478737718","Bar Policlinico",45.402957,11.887862,"bar","Via Nicolò Giustiniani 2","+39 049 8212395","",""],["n4533961094","Bar Pollini",45.409501,11.878892,"bar","Via Eremitani 19","","",""],["n5194458361","Bar Pollini",45.40683,11.878307,"bar","Riviera dei Ponti Romani 12","","",""],["n6372419799","Bar Portello",45.407124,11.891987,"bar","","","","Mo-Su 06:30-02:00"],["n3882058155","Bar Romeo",45.407237,11.875581,"cafe","Volto del Salone 43/44","","","Mo-Sa 06:30-21:00; We 06:30-13:00; Su off"],["n1459180024","Bar San Marco",45.409371,11.870586,"cafe","Corso Milano 53","","",""],["n4272170856","Bar San Paolo",45.402203,11.881968,"cafe","Via Melchiorre Cesarotti 27","+39 049 965 6875","",""],["n6297125842","Bar Santa Sofia",45.407514,11.885033,"bar","","","",""],["n13333948035","Bar Sasapè",45.404938,11.863312,"bar","Via Milazzo 26","","","Mo-Fr 07:00-02:30; Mo-Fr 17:30-20:30; Sa 08:30-13:00"],["n8008591085","Bar Stella",45.387994,11.892865,"bar","","","",""],["n11592940509","Bar Time",45.424236,11.926679,"cafe","","","",""],["n7830128294","Bar Trattoria Chiara",45.425423,11.872416,"bar","","","",""],["n1421168454","Bar Tre Scalini",45.410175,11.893031,"cafe","Via Venezia 2","+39 049 807 0489","","PH,Mo-Su 07:00-20:00"],["n12956988101","Bar Valbrentelle",45.395819,11.828255,"bar","Via dei Colli 93/a","","",""],["n1466965873","Bar Venezia",45.378819,11.903225,"cafe","Piazza Santi Pietro e Paolo 1","","",""],["n12518476918","Bar Zip",45.393177,11.935683,"bar","","","",""],["n2458112487","Bar al Bacaro",45.410715,11.881523,"bar","Via Porciglia 22","","",""],["n1460260745","Bar al Museo",45.400807,11.879658,"cafe","","","","Mo-Su 07:00-21:00"],["n4528446565","Bar al Tribunale",45.408481,11.881303,"bar","Via Altinate 69","","",""],["w732410230","Bar al Vicolo",45.408257,11.876889,"cafe","","","",""],["n7365831649","Bar da Berto",45.407308,11.875579,"cafe","","+39 049 652894","","Mo-Sa 06:30-20:00; We 06:00-14:00"],["n11595908097","Bar da Bogà",45.411664,11.918761,"cafe","","","",""],["n3698373207","Bar da Galà",45.400002,11.8779,"cafe","Via Beato Luca Belludi 21/a","","",""],["n4703723689","Bar dei Osei",45.407469,11.875675,"cafe","Piazza della Frutta 1","+390498759606","",""],["n6408471238","Bar la Specola",45.401565,11.866959,"bar","Riviera Paleocapa 66","","",""],["n1451958219","Barby Bar",45.411308,11.843968,"bar","Via Enrico Tazzoli 1","","",""],["n1989854778","Barcode",45.408053,11.872862,"bar","Via Dante 1","+393456343407","","Mo-Su 15:00-02:00"],["n6984606386","Beer bar",45.400791,11.875949,"bar","","","",""],["n1459180110","Belle Époque",45.409778,11.869049,"cafe","Corso Milano 93","","",""],["n5705938563","Birreria Pedavena",45.416543,11.880026,"cafe","Piazzale della Stazione 6","+39 0498209049","",""],["n11596185914","Bistrò Net Tower",45.416168,11.919403,"cafe","","","",""],["n7398336825","Bizzaro Sara - I Tesori Del Granaio",45.432611,11.889829,"bakery","Via Guido Reni 51","+39347 5497478","",""],["n13144971801","Blended",45.412723,11.874759,"bar","Via del Carmine 2/A","","",""],["n7465809684","Blu Bar",45.412449,11.874739,"bar","Piazza Petrarca 6a","","","Mo-Fr 7:00-19:00"],["n938447699","Blu bar",45.412883,11.864017,"bar","","","",""],["n13294498014","Boschetti",45.4122,11.882939,"cafe","","","",""],["n1491261318","Bottega del caffè Dersut",45.416611,11.879573,"cafe","","","",""],["n4254712478","Boulangerie de Carlotta",45.410052,11.879881,"bakery","Piazza Eremitani 24","+39 049 8752284","","Mo-Sa 08:00-20:00"],["n1460204693","Box",45.399985,11.87675,"cafe","","","",""],["n12207678863","Bruschette Spritz e DJ Set",45.408571,11.875339,"bar","","","",""],["n1989854770","Brutal",45.407418,11.87398,"bar","Piazza dei Signori 2","+39 049 261 4077","","Tu-Sa 11:00-23:00"],["n10939865950","Cafe Arena",45.399356,11.884028,"cafe","","","","Mo-Tu,Th-Fr 07:00-14:30,16:00-20:00; Sa 07:00-13:30,16:00-20:00; Su 07:30-13:30"],["n1913351110","Cafe Carlotta",45.405882,11.878948,"cafe","Via San Francesco 44","","","Mo-Su 07:00-23:00"],["n4394516094","Caffe Antille",45.406849,11.876656,"cafe","","","",""],["n9793086910","Caffe Borgomagno Bar",45.419917,11.878977,"bar","Cavalcavia Borgomagno 32","","",""],["n1459280014","Caffe della piazzetta",45.406103,11.874745,"cafe","","","",""],["n1495216925","Caffeine",45.404153,11.875685,"cafe","Via Roma 96","","","Mo-Sa 07:00-19:30; Su 09:00-19:30"],["n2769916173","Caffetteria",45.408439,11.875523,"cafe","Via Vincenzo Stefano Breda 29","","",""],["n5819000324","Caffetteria Beggio",45.40411,11.886302,"cafe","Via Ospedale Civile 103","+39 347 3235339","","Mo-Fr 07:00-17:30"],["n1694213130","Caffetteria Facciolati",45.395873,11.888496,"bar","","","",""],["n8137097561","Caffetteria Pasticceria Antico Forno",45.414093,11.874274,"cafe","","+390490990097","https://www.anticofornopadova.it/",""],["n11047767205","Caffetteria Savelli",45.409478,11.913091,"cafe","Via Giovanni Savelli 80","+39 049 232 3346","https://caffetteriasavelli.it/","Tu, Th-Fr 07:00-20:00; Mo, We 07:00-17:00"],["n6294004348","Caffe’ Al Pra",45.397828,11.874259,"cafe","","","",""],["n13277588727","Caffè Cado'",45.413157,11.885169,"cafe","","","",""],["n6457983891","Caffè Carlotta",45.409748,11.910577,"cafe","Via della Croce Rossa 44","","",""],["n5654350830","Caffè Corso",45.413835,11.879358,"cafe","","","",""],["n4704331289","Caffè Diemme",45.402721,11.87239,"bar","Via Venti Settembre","","","Mo-Sa 07:00-22:00"],["n7368173397","Caffè Diemme sotto il salone",45.407226,11.875427,"cafe","Volto del Salone 47","","https://www.diemmeattitude.com/diemme-sotto-il-salone/","Tu-Fr 08:30-13:00,16:00-20:00; Sa 08:30-20:00; Su off; Mo off"],["n10945668287","Caffè V",45.404998,11.87602,"cafe","via Roma 66","+39 049 213 1981","",""],["n5713904068","Caffè Veneto",45.41066,11.876038,"bar","Via Martiri della Libertà 17","","",""],["n1459185506","Caffé Cavour",45.408424,11.877643,"cafe","Piazza Cavour 10","+39 049 8751224","https://www.caffecavour.com","Tu-Th,PH 07:30-21:00; Fr 07:30-21:30; Sa 07:30-22:00"],["n434470637","Caffé Latteria",45.416489,11.879308,"cafe","Corso del Popolo 73","+39 049 8752339","",""],["n1461548958","Caffé Margherita",45.407672,11.876054,"cafe","42","+39 049 8760107","","Mo-Sa 07:00-22:00; Su 10:00-22:00"],["n1452339947","Caffé Missaglia",45.408615,11.875533,"cafe","Via Santa Lucia 47","","",""],["n1461548961","Caffé Patavino",45.407846,11.875662,"cafe","34","","",""],["n325130331","Caffé Pedrocchi",45.407692,11.877095,"cafe","Via Otto Febbraio 15","+39 049 8781231","https://www.caffepedrocchi.it/",""],["n2497728691","Caffé Tommaseo",45.412842,11.892988,"cafe","Via Niccolò Tommaseo 67a","","",""],["n12018669975","Caffé del Borgo",45.388894,11.87606,"cafe","Via Barroccio Dal Borgo 2","","",""],["w131978509","Cafinho",45.409693,11.860427,"cafe","","","",""],["n7472875711","Cafè Noir Padova",45.401165,11.944025,"cafe","Via Vigonovese 213","+39 049 7625451","https://www.cafenoircapsule.it/cafe-noir-padova.html","Mo 15:30-19:30; Tu-Sa 09:30-12:45,15:30-19:30; Su off"],["n6617660156","Cafè Room",45.432119,11.840662,"cafe","Via Montà 283a","+39 348 862 8298","https://cafe-room.business.site/",""],["n1458199511","Cafè Rouge",45.377593,11.890843,"cafe","","","",""],["n9164328671","Café Diemme",45.400188,11.876065,"cafe","","+39 049 875 0140","https://www.italianattitude.com",""],["n6544489789","Cake Studio",45.375478,11.870902,"pastry","Via Guizza 197","","",""],["n2659353622","Carpe Diem",45.410345,11.883033,"bar","Largo Egidio Meneghetti 4","","",""],["n2196579299","Casata Veneta",45.405209,11.876309,"bar","Via Roma 53","","",""],["n13051898572","Casetta Zebrina",45.418759,11.888143,"bar","Via Jacopo da Montagnana 93","","",""],["n10836785332","Centrale",45.408761,11.878925,"cafe","Via degli Zabarella 105","","",""],["n2372274366","Chocolat",45.406982,11.87601,"bar","","","",""],["n11593068478","Ciao Bar",45.40844,11.915814,"cafe","","","",""],["n9758322117","Ciokkolatte",45.407958,11.873227,"bakery","Piazza dei Signori 27","","",""],["n5197051482","Città Giardino - da Ignazio",45.398024,11.86765,"bar","Via Francesco Nullo 6","+39 049 661583","",""],["n6376188804","Civico 4",45.407313,11.892278,"bar","Via del Portello 2D","","",""],["n7489451157","Confetteria Cappellari",45.425083,11.946566,"pastry","Piazzale Silvio Barbato 7","+39 049 625418","",""],["n10186974101","Corner bar",45.426634,11.878032,"bar","Via Cattaro 20","","","Mo-Fr 07:30-21:00; Sa 07:00-13:30"],["n5654350828","Corso 222",45.414831,11.879295,"cafe","Corso del Popolo 6","","","Mo-Su 07:00-20:00"],["n3926039292","Corte Sconta",45.413312,11.893933,"bar","Via dell'Arco 9","+39 348 777 7815","https://www.facebook.com/cortescontapadova",""],["n6985103685","Corte Sconta",45.405614,11.87549,"bar","","","",""],["n8833295976","Crilu",45.433599,11.870774,"bar","","","",""],["n1459245058","Da Stelvio",45.40895,11.874239,"cafe","Via Belle Parti 21","+39 049 8750846","",""],["w131998283","Dai Ragazzi",45.400461,11.885283,"bar","Piazzale Pontecorvo","","","Tu-Su 11:00-15:00,17:00-23:00"],["n13348667420","Dal Corso Chocolateria Pasticceria",45.427253,11.893163,"cafe","Largo Claude Débussy 4","+39 049 606 983","https://pasticceriadalcorso.it","Mo-Su 07:00-19:45; We off"],["n1459180035","Diego Bar",45.409151,11.872973,"bar","Corso Milano 9","","",""],["n11593068476","Distretto Est",45.408859,11.915281,"cafe","","","",""],["n7199650934","Dolce Caffé",45.414056,11.885039,"bar","Via Carlo Rezzonico 29","","",""],["n6334200034","Dolce Gelato",45.431917,11.871103,"cafe","Via Po 5","","","Mo-Su 06:00-19:30"],["n7705277402","DolceAmaro Caffè",45.402826,11.912183,"cafe","Via Cesco Baseggio","","",""],["n6376391209","Dívi Coffee & Co",45.408673,11.891829,"bar","Via Francesco Marzolo 17d","+393756283570","https://www.divicoffeeandco.com/",""],["n1495217236","El Pilar",45.40748,11.8737,"bar","Piazza dei Signori 8","","",""],["n1460060532","Ellisse Cafe",45.402961,11.875584,"cafe","Via Umberto I 5","","","Mo-Su 06:30-22:00"],["n9951614666","Emy Cafè",45.431497,11.843008,"cafe","","","",""],["n11593053667","Enjoy Caffè",45.408351,11.910611,"cafe","","","",""],["n10052303454","Enoteca Barcollo",45.381126,11.864513,"bar","Via Alessandro Guidi 23","","",""],["n2316897137","Enoteca La Moscheta",45.410209,11.868777,"bar","Corso Milano","","https://www.enotecalamoscheta.it/",""],["n9680965314","Enoteco Barcollo",45.391993,11.841469,"cafe","","","",""],["n1459404941","Eroica caffè Padova",45.408427,11.874158,"cafe","Via Santa Lucia 85/87","","https://eroica.cc/it/padova","Tu-Su 08:00-21:00; Mo off"],["n3698373208","F&De Group Uniperson",45.399076,11.879434,"cafe","","","",""],["n8148148308","Family Caffè",45.427607,11.893628,"cafe","Largo Claude Debussy 1","","",""],["n2144631170","Festival Bar",45.410303,11.915233,"cafe","Via San Crispino 34","","",""],["n7082027765","Festival Snack Bar",45.432212,11.898647,"bar","Via del Plebiscito 1866 82","+39 338 956 5572","https://it-it.facebook.com/number1spriz/",""],["n10718723139","Fly Bar",45.404282,11.876187,"bar","Galleria Tito Livio 4","","","Mo-Su 08:30-24:00"],["n5535531897","Forno Cavallini",45.405627,11.869275,"bakery","Via del Vescovado 68","","",""],["n7438296352","Forno a legna di Marina",45.435209,11.93077,"bakery","Via Fornaci 265","+39 049 8932711","",""],["n6336092426","Frully bar",45.402505,11.88295,"bar","Via Melchiorre Cesarotti 65","","",""],["n9729925101","Fuerte Bistrot - cafè",45.413335,11.885641,"cafe","Via Giovanni Berchet 14","+39 049 8779018","https://www.instagram.com/bar_fuerte/?r=nametag",""],["n434472669","G bar 2.0",45.411814,11.876991,"cafe","Via Giacomo Matteotti 15b","+39 0498209018","","Mo-Fr 07:30-22:00; Sa 08:00-22:00"],["n7436494067","Gastaldon",45.415707,11.915607,"bakery","Via Giovanni Giolitti 43","+39 049 8076232","",""],["n6981574508","Gelateria Caffetteria Santamaria",45.380818,11.868673,"pastry","Via Antonio Genovesi 2","+39 049 8804896","",""],["n2588859173","Gelateria Il pinguino",45.401251,11.944678,"bar","Via Vigonovese 223","+39 049 760789","",""],["n3398169193","Genfry Bar",45.396105,11.829514,"cafe","","","",""],["n11007778103","Gillo",45.404013,11.875821,"cafe","Via Roma 93","","","Mo-Tu 07:00-22:00; We-Th 07:00-23:00; PH closed; Fr 07:00-24:00; Su 09:30-22:00; Sa 07:00-01:00"],["n1988584414","Gino's Bbq Bar Ristorante",45.399533,11.848848,"bar","Via Sorio 89","","",""],["n1989854791","Giornale & Caffé",45.408012,11.872987,"cafe","Piazza dei Signori 24","","",""],["n8821039774","Giratempo Caffetteria",45.402033,11.895045,"cafe","Via Bernardino Scardeone 19","+390499865146","","6:30 - 20:00"],["n10978201052","Giò",45.39145,11.873734,"cafe","Via Giordano Bruno 22a","+39 349 6570359","",""],["n12075126707","Glamour Cafè",45.442739,11.893194,"bar","","","",""],["n11593068472","Golden Coffee",45.409956,11.914943,"cafe","","","",""],["n10762159389","Goppion Caffetteria",45.406669,11.875444,"cafe","Piazza delle Erbe 6","","","Mo-Su 07:00-20:00"],["n1989854795","Gran Caffé Diemme",45.407449,11.873376,"cafe","Piazza dei Signori 17","","",""],["n1461548967","Graziati",45.407765,11.876111,"pastry","Piazza della Frutta 40","+39 049 875 1014","https://www.graziati.com/","Mo-Tu,Th-Su 07:00-20:30"],["n1460324902","Green Haus",45.397148,11.878788,"bar","","","",""],["n5967125359","Gsky",45.413809,11.93357,"bar","","","",""],["n4026567553","Gustò",45.395453,11.931016,"cafe","","","",""],["n7937832088","Heart Café",45.409511,11.847551,"cafe","Via Enrico Fermi 19","+39 339 331 1610","","Mo-Fr 06:30-20:00; Sa 07:30-13:00; Su off"],["n1989854851","Hendrix Bar",45.407878,11.873671,"bar","Piazza dei Signori 38","","","Tu-Sa 07:00-00:00; Su-Mo 15:30-24:00"],["n1503764278","Hostaria Ai Do Archi",45.408338,11.873847,"bar","23","","https://www.aidoarchi.it/",""],["n1480262292","Huracan Cafè",45.407518,11.884965,"bar","Via Altinate 157","","",""],["n13277583927","I Girasoli",45.413229,11.884881,"cafe","","","",""],["n7483679096","I gelati di Gaia",45.394745,11.86234,"pastry","Via Siracusa 4","+39 393 4041171","",""],["n1459185503","Ikoo Coffee",45.409196,11.878108,"cafe","10","","","Mo-Sa 07:00-20:00"],["n6518977955","Il Baretto",45.413368,11.872773,"bar","Via Beato Pellegrino 4","","","Mo-Fr 07:00-20:00"],["n1421168456","Il Belzonino Cafè",45.407459,11.885775,"bar","Via Giambattista Belzoni 2","","","Mo-Sa 06:30-22:00; Su 07:00-22:00"],["n1935510771","Il Caffè del Viale",45.410713,11.92845,"cafe","","","",""],["n12568919801","Il Calice",45.415329,11.872185,"bar","Via Suor Elisabetta Vendramini 20","0498307832","","Mo-Fr 07:00-21:00; Sa 07:00-19:00"],["n6561506380","Il Cantuccio",45.389821,11.89371,"bar","Via Jacopo Facciolati 144/a","","",""],["n4907433264","Il Forno, Pane e Focaccia",45.404295,11.879289,"bakery","Via del Santo 59","+39 342 7755717","","Mo-Tu, Th-Sa 08:00-18:30; We 08:00-17:30; Su 10:00-15:00"],["n1650283359","Il Gancino",45.407392,11.872922,"cafe","","","",""],["n12421345381","Il Gottino",45.406221,11.875991,"bar","","","",""],["n1458908111","Il Malandrino",45.408464,11.884909,"bar","Via Giuseppe Jappelli","","",""],["n5775244354","Il Moscerino",45.382289,11.883612,"bar","Via Pietro Bembo 11a","+39 347 4548213","https://enotecailmoscerino.com/",""],["n8277223294","Il Sole - bar caffetteria enoteca",45.396837,11.898023,"bar","Via Egidio Forcellini 126","+39 049 8021358","",""],["n1461252421","Il Venexino - Nonsolocaffé",45.410879,11.87577,"cafe","45","","",""],["w858064540","Kiosk 8.1",45.402047,11.937766,"cafe","Via Vigonovese 141","+39 392 142 8714","",""],["n7525852745","Kirone",45.424386,11.887835,"cafe","","","",""],["n8093033018","Kè Bolà Cuba",45.412976,11.838916,"bar","","","",""],["n6447707485","L'Arte del Pane",45.412192,11.873882,"bakery","Vicolo Ponte Molino 4","","",""],["n2684839673","L'antico chicco di caffè",45.414884,11.874479,"cafe","Piazzale Giuseppe Mazzini 47","+39 049 664063","",""],["n6521469140","L'insolito caffè",45.426316,11.945683,"bar","","","",""],["n443208901","L'intermezzo",45.414622,11.885499,"bar","Via Niccolò Tommaseo 66","","","Mo-Fr 07:00-18:00"],["n2196579310","La Cicala",45.40927,11.868855,"cafe","","","",""],["n11592852650","La Cittadella",45.410686,11.902464,"cafe","","","",""],["n12748188401","La Fenice",45.414174,11.873561,"bar","Piazzale Giuseppe Mazzini 8","","",""],["n11836063925","La Nuvola Blu",45.408715,11.934404,"cafe","Viale della Navigazione Interna 75","+39 049 780 0441","","Mo-Fr 07:00-17:00"],["n1459270002","La Pralina Padovana",45.409986,11.869204,"pastry","","","",""],["n1968643488","La Proseccheria",45.408475,11.874332,"cafe","","","","Tu-Su 16:30-02:00"],["n7372323034","La bottega del pane",45.407085,11.874871,"bakery","Piazza delle Erbe 28","+39 049 8752140","","Mo-Sa 08:30-13:30,16:30-19:30; Su off"],["n1473162137","La fragranza a casa vostra",45.401597,11.876838,"bakery","","","",""],["n11595908108","Le 4 Colonne",45.413346,11.929805,"cafe","","","",""],["n4524987806","Le Sablon",45.433922,11.890221,"pastry","Via Guido Reni 67","+39 049601361","https://www.lesablon.it/",""],["n7483723308","Le dolci tentazioni",45.422757,11.854827,"pastry","","+39 339 7406624","",""],["n11038110804","Legatoria13 Enoteca & Bottega",45.407686,11.887014,"bar","Via Giambattista Belzoni 13","","https://www.legatoria13.com/","Mo, Tu, Th 10:00-15:00, 17:30-00:00; We, Fr 10:00-15:00, 17:30-02:00"],["n11592929871","Leonardo",45.407226,11.903734,"cafe","","","",""],["n1459280051","Les Tulipes cafè",45.40578,11.875587,"cafe","","","",""],["n4809853062","Lia Bar",45.401002,11.895018,"cafe","Via Teofilo Gautier 6","+39049756645","",""],["n3574700133","Loris Bar",45.37994,11.901539,"bar","Via del Partigiano 6","","","Mo 06:30-16:00; Tu 06:30-16:00,18:00-21:00, Tu-We 06:30-16:00; Th 06:30-16:00,18:00-21:00; Fr 06:30-16:00"],["n6297258081","MAV Bar",45.408131,11.882189,"bar","","","","Mo-Th 07:00-21:30; Fr-Sa 07:00-19:30; PH closed"],["n4254712519","Maison Hand",45.410176,11.880832,"cafe","Piazza Eremitani 17","+39 049 8761394","https://maison-hand.it/","Mo-Sa 07:00-20:00"],["n12178069145","Mami Café",45.410706,11.867873,"cafe","Corso Milano 68","","",""],["n7473867270","Manicaretti et Cetera",45.372723,11.828087,"pastry","Via Monsignor Filippo Franceschi 6","+39 049 8670344","",""],["n1932440846","Manin",45.407184,11.872888,"cafe","6","","",""],["n9524600272","Marendin",45.388457,11.892525,"pastry","","","https://www.marendin.it","Tu-Sa 10:00-13:00,15:30-18:30; Su 10:00-13:00"],["n1989854808","Marlé",45.40797,11.873205,"bar","Piazza dei Signori 30","","","Mo-Su 07:00-00:00"],["n13264705025","Marzolo Caffetteria",45.409687,11.883842,"cafe","","","",""],["n12484679163","Midtown",45.425421,11.939781,"bar","Via Don Giuseppe Lago 46","+303925297246","","Mo-Sa 07:00-02:00; Su 17:00-02:00"],["n7461706770","Milk Bar",45.407097,11.87803,"pastry","Via Cesare Battisti","+39 320 7162343","https://www.milkbarpasticceria.it/","Mo-Sa 06:00-20:00; Su off"],["n2868467858","Milk bar Ennio",45.429765,11.880037,"cafe","Via Giovanni Segantini 1","+39 377 9467308","",""],["n12546145705","Mille e una notte",45.413523,11.885443,"cafe","","","",""],["n1460287927","Mimosa",45.380259,11.877702,"cafe","","","",""],["n1458908127","Mio Bar",45.410872,11.881869,"bar","","","",""],["n434470635","Mio bar",45.417236,11.878035,"bar","Piazzale Stazione 1/7","+39 049 8762639","",""],["n5643760236","Miro's Cafè",45.402166,11.933537,"cafe","Via Vigonovese 50b","","","Mo-Fr 06:30-18:30; Sa 07:00-14:00; Su off"],["n1459304974","Monkey Bar",45.408166,11.870965,"cafe","Piazza Capitaniato 9","","",""],["n434472668","Monument Cafè",45.412697,11.877811,"bar","35","","",""],["n9199462270","Morning Cafe",45.39978,11.877243,"cafe","23","","",""],["n11169439137","New Life Cafè",45.408553,11.913137,"cafe","Via Giacinto Andrea Longhin","","",""],["n6361791378","Noi",45.421362,11.886874,"bar","","","",""],["n1968643485","Nova",45.408223,11.874659,"cafe","","","",""],["n4475979548","ODStore",45.409367,11.878124,"pastry","Piazza Giuseppe Garibaldi 7","+390490998573","","Mo-Su,PH 09:00-20:00"],["n8790229614","Orange bar",45.424995,11.8779,"bar","Via Curzola 4","","",""],["n4093272816","Orca l'oca",45.4325,11.880211,"cafe","Via Donato Bramante 15","","",""],["n1003269446","Osteria Barabba",45.410934,11.858006,"cafe","Via Vicenza 46","","",""],["n1459284627","Ottoemezzo Bar",45.409695,11.878087,"cafe","6","","",""],["n13261417587","P&G 28",45.408925,11.889259,"bar","","","",""],["n6594733941","Padaride Caffè",45.378089,11.870494,"cafe","","","",""],["n2859441715","Pane & vino San Daniele",45.408773,11.881766,"bar","Via Altinate 71","","",""],["n5194458364","Pane e Miele",45.405918,11.877478,"cafe","Riviera Tito Livio 8","","",""],["n1856684109","Panetteria Mattiello Demitri",45.413457,11.884,"bakery","","","",""],["n9199462269","Panetteria al Santo",45.40068,11.879385,"bakery","Via Beato Luca Belludi 52","+39 0142 2170280","",""],["n7400980650","Panetterria Buso Giulia",45.395247,11.862283,"bakery","Via Savona 1","+393467523134","",""],["n6881175420","Panificio Arena",45.388033,11.869618,"bakery","","","",""],["n1713457534","Panificio Bettio",45.406895,11.874142,"bakery","Via Daniele Manin 9","+39 049 8750719","",""],["n5167803968","Panificio Caffe' Androni",45.369157,11.8368,"bakery","","","",""],["n7402928030","Panificio F.lli Galtarossa",45.388573,11.892447,"bakery","Via Jacopo Crescini 134d","+39 049 799 0353","",""],["n455928024","Panificio Galileo Fornasiero",45.401045,11.943523,"bakery","Via Vigonovese 116","+39049 870 2658","https://www.panificiogalileofornasiero.it/",""],["n1958851688","Panificio Garbo",45.382708,11.868953,"bakery","","","",""],["n7398493277","Panificio Jessica",45.423008,11.889256,"bakery","Via Antonio Bonazza 61","+39 049 604341","",""],["n4567438848","Panificio Mattiello",45.413494,11.88387,"bakery","","","",""],["n7438606056","Panificio Miozzo",45.414554,11.904827,"bakery","Via Pietro Maroncelli 18b","+39 049 772582","",""],["n1218298753","Panificio Palestro",45.4069,11.86266,"bakery","","","",""],["n4909548296","Panificio Pasticceria Caffetteria Soranzo",45.40891,11.889398,"cafe","","","","Mo-Fr 07:00-19:30; Sa 07:00-14:00"],["n5560842378","Panificio Pasticceria Cattelan",45.441547,11.893641,"pastry","Via Pontevigodarzere 60","","",""],["n6897861487","Panificio Pasticceria Michele",45.406531,11.879079,"bakery","Via degli Zabarella 31","","","Mo-Fr 08:00-13:30, 16:00-19:30; Sa 08:00-13:30"],["n4113589175","Panificio Rigoni",45.380697,11.90165,"bakery","Via Piovese 42","+39049750463","",""],["n5947958598","Panificio Rizzo Silvano",45.426667,11.875853,"bakery","Via Zara 43","+39049 610069","",""],["n7369841808","Panificio San Leonardo",45.4113,11.871516,"bakery","","+39 049 8751660","",""],["n6440451472","Panificio pasticceria S. Camillo",45.402123,11.894725,"bakery","","","",""],["n2320400303","Panificio-Alimentari Michelotto",45.35898,11.893998,"bakery","","","",""],["n1459284632","Paprika Caffé",45.410189,11.877939,"cafe","17","+390498760140","",""],["n12634560126","Parco Morandi & Bar",45.437397,11.887497,"cafe","","","",""],["n5167638960","Pasticceria - Caffetteria Mille Voglie",45.384178,11.857487,"cafe","","","",""],["n2737349040","Pasticceria Agostini",45.416089,11.906383,"cafe","","+39 049 8075636","",""],["n12613448468","Pasticceria Antico Forno",45.409901,11.875912,"pastry","","","",""],["n7368249640","Pasticceria Antonucci",45.415111,11.832816,"pastry","Via Chiesanuova 147","","https://pasticceriaantonucci.it/","Mo-Su 05:30-20:00"],["n10186974100","Pasticceria Antonucci",45.42595,11.878364,"cafe","Via Michelangelo Buonarroti 159","","",""],["n7447998263","Pasticceria Ballico",45.394402,11.872417,"pastry","Corso Vittorio Emanuele II 181","+39 049 8803244","http://www.pasticceriaballico.com/",""],["n4066671849","Pasticceria Biasetto",45.399237,11.885734,"pastry","Via Jacopo Facciolati 12","+39 049 8024428","https://pasticceriabiasetto.it/","Su 07:00-13:00; Mo 07:00-15:00; Tu-Sa 07:00-19:30"],["n1460060603","Pasticceria Breda",45.402634,11.875391,"pastry","Via Umberto I 26","+390498758394","","Tu-Su 07:30-20:00"],["n7012446024","Pasticceria Caffeteria Arcella",45.422324,11.884097,"cafe","","","","Mo-Fr 07:00-20:30"],["n1460316569","Pasticceria Celso",45.389897,11.880063,"cafe","","","",""],["n12873953701","Pasticceria Desideria",45.395663,11.827623,"bakery","Via dei Colli 95","+39 049 5225524","https://pasticceriadesideria.it/",""],["n7474933440","Pasticceria Estense",45.397533,11.893984,"pastry","Via Egidio Forcellini 76","+39 049 755914","https://www.pasticceriaestense.com/web/",""],["n7447983230","Pasticceria Europa",45.398518,11.8718,"pastry","Via Alberto Cavalletto 14","+39049657921","https://www.facebook.com/pages/Pasticceria-Europa/121977051191503",""],["n455927859","Pasticceria Forin",45.401063,11.943068,"cafe","","","",""],["n5017880871","Pasticceria Gelateria Fontana",45.447673,11.894277,"cafe","","","",""],["n12613599970","Pasticceria Gelateria SanMarco",45.380589,11.869217,"cafe","","","",""],["n7852125433","Pasticceria Giotto",45.40999,11.868592,"pastry","Corso Milano 105","+39 049 522 5026","https://www.pasticceriagiotto.it/it_IT/punti-vendita/pasticceria-giotto-corso-milano-105/","Tu-Su 07:00-19:00"],["n10186974099","Pasticceria La Crème",45.426827,11.886704,"cafe","","+39049619435","","Tu off"],["n7477563293","Pasticceria La Piazzetta",45.389669,11.894155,"pastry","Via Jacopo Facciolati 95","+39 049 8022505","https://www.pasticcerialapiazzetta.com/","08:00-20:00"],["n4032115831","Pasticceria Lilium al Santo",45.402108,11.879927,"pastry","Via del Santo 181","+39 049 8751107","https://liliumpasticceria.it/","Tu-Su 07:30-19:00"],["n7504583995","Pasticceria Mazzari",45.427185,11.916014,"pastry","Via dell'Ippodromo 62c","+39 049 611445","https://www.mazzari.it/",""],["n5398737574","Pasticceria Millevoglie",45.369684,11.839481,"pastry","Via Armistizio 291","","http://www.millevogliepadova.com/",""],["n6134753238","Pasticceria Panificio Bortolato",45.400672,11.856025,"bakery","","","",""],["n4293147561","Pasticceria Paride Maor",45.40177,11.911036,"cafe","Via Gattamelata 39bis","+39 049 8075711","",""],["n2779191399","Pasticceria Racca",45.408613,11.878158,"cafe","Via Pietro Fortunato Calvi 8","","",""],["n7579178753","Pasticceria S. Lorenzo",45.425345,11.898702,"cafe","Via Giovanni Battista Viotti 23","","",""],["n7474935502","Pasticceria Tombolato",45.423692,11.942171,"pastry","VIa San Marco 99c","+39 049 628072","https://www.pasticceriatombolato.it/",""],["n1580948982","Pasticceria Viennese",45.412862,11.873661,"cafe","Piazza Petrarca 1","+39 049 876 1122","",""],["n6595225845","Pasticceria, caffetteria, cioccolateria Novello",45.374743,11.870819,"cafe","","","",""],["n9568490190","Paul's Bar",45.411091,11.867157,"cafe","","","","Mo-Su 07:00-22:00"],["n13064202252","Pedron Caffè",45.409411,11.875781,"cafe","","","",""],["n12018669928","Pedroni caffé",45.372105,11.887618,"cafe","Via Pietro Bembo 104","","",""],["n434470636","Piano Terra",45.416199,11.876892,"bar","","","",""],["n4038324968","Piccola Padova",45.401867,11.89025,"bar","Via Gattamelata 50","","",""],["w507337053","Pier88",45.386727,11.867342,"bar","Lungargine Scaricatore 37","+393452970370","https://www.pier88.it/","Mo 08:00-02:00; We-Fr 08:00-02:00; Sa 09:00-02:00; Su 09:00-24:00"],["n1459180056","Prelibate tentazioni",45.409381,11.870389,"pastry","Corso Milano 59","+39 049 2326676","https://prelibatetentazioni.it/wp-pt/",""],["n2624052848","Prosciutteria",45.411237,11.87361,"cafe","","","",""],["n10896961752","Quei Bravi Ragazzi",45.425307,11.946334,"bar","via San Marco 148","+39 328 466 6742","",""],["n11802240739","Radio City Music Hall",45.407857,11.853862,"bar","Via Palestro 62","","",""],["n9824778654","Rally Bar",45.38319,11.851529,"bar","Via Rovigo 32","","","Mo-Sa 07:00-20:00"],["n11062952485","Red Velvet",45.407134,11.891701,"cafe","Via Giambattista Belzoni 137/139","+393286388553","http://www.redvelvetpadova.it/","Tu-Fr 08:00-12:00, 15:00-19:00; Sa 08:30-12:00"],["n3678599409","Ristobar Intermezzo",45.393873,11.945989,"cafe","Via Lisbona 28a","+39 0492953610","","Mo-Fr 05:30-20:00"],["n12018669878","Ristobar Smile",45.354116,11.895845,"cafe","","","",""],["n1226823274","Ristorante Mitica",45.391364,11.892378,"pastry","Via Jacopo Facciolati 106","+39 049 8309416","https://www.ristorantemitica.com/","Mo-Su 12:00-15:00,18:30-23:00"],["w131997237","Rosa",45.4023,11.883106,"bar","","","",""],["n12430837103","Rustichelli Mangione Ideatori Del Gusto",45.417569,11.880095,"bakery","","","",""],["n11669355370","S.A. Delight",45.390514,11.893476,"bar","Via Jacopo Facciolati 85","","",""],["n5696797708","STEP Café",45.405871,11.895834,"cafe","Via Giuseppe Orus 5","","",""],["n12993328291","SUNRISE Garden",45.436437,11.846879,"bar","Via Capitello 66","","",""],["n10923888855","San Michele - Sud Experience",45.399831,11.884369,"cafe","Via Michele Sanmicheli 1","","","We-Fr 08:00-15:30,18:00-22:00; Sa,Su 08:00-22:00"],["n13277593402","Sanremo",45.413706,11.887742,"pastry","","","",""],["n4685390097","Servizio bar della Parrocchia",45.378735,11.902893,"cafe","","","",""],["n10188901832","Snack Bar Self Service",45.412939,11.924211,"cafe","","","",""],["n4909548297","Snack Bar Temporin",45.408841,11.889792,"cafe","","","",""],["n13721563061","Snack Bar Tris",45.425173,11.939905,"bar","","","",""],["n11593068475","Snack Express",45.409217,11.915501,"cafe","","","",""],["n6865753121","Snack bar Punto a Capo",45.414412,11.886226,"bar","Via Niccolò Tommaseo 70c","","",""],["n7361748385","Sobon forno bio",45.407384,11.875667,"bakery","","","https://www.sobon.it/","Mo,Tu 08:30-13:30; We 08:30-13:30,15:30-19:30; Th,Sa 15:30-19:30"],["n1458908120","Sogni di ogni ora",45.380258,11.902297,"bakery","Via Piovese 53","","",""],["n2963468735","Sorsi e Morsi",45.40903,11.913485,"bar","","","",""],["n2465803024","Starbucks",45.406579,11.875839,"cafe","","","",""],["n11804527613","Starry",45.415736,11.879381,"cafe","Corso del Popolo 8","+39 3883696638","","09:30-20:30"],["n6895028538","Steampower",45.40683,11.874716,"cafe","Piazza delle Erbe 20","+39 049 652468","https://steampower.it/","Mo-Fr 08:00-17:00; Sa,Su 08:00-19:00"],["n4703736089","Strasse",45.406615,11.87426,"bar","Via Andrea Gritti 7","","",""],["n4475979563","Te la do io la merenda",45.407192,11.875849,"bakery","","","",""],["n10154100670","Tessari Caffetteria & Bistrot",45.407282,11.885431,"cafe","","","",""],["n6556981932","That's Amore",45.407324,11.879038,"bar","Via degli Zabarella 61","","",""],["n4054653230","The Coffee",45.408956,11.879717,"cafe","Via Altinate 37","","https://www.thecoffeebox.it","Mo-Sa 08:00-18:00; Su 10:00-15:00"],["n4561522770","Vanilla",45.367666,11.829873,"bar","Via Romana Aponense 109","","",""],["n1461549014","Vecchiato",45.407865,11.875153,"bakery","26","","",""],["n1459180070","Vecia Padova",45.407078,11.871517,"cafe","","","",""],["n6170425503","Verba Volant",45.411746,11.893436,"cafe","Via Niccolò Tommaseo 114","","","Mo-Sa 07:00-20:00"],["n441932749","Vero",45.403275,11.884486,"cafe","Via Ospedale Civile 45","","","Mo-Sa 07:00-17:00"],["n9632572377","Versi riBelli",45.420857,11.880594,"bar","","+39 331 388 2147","","Mo-Sa 17:00-23:00; Su 16:00-22:00"],["n10159111212","Vineria al Calice",45.426658,11.912161,"bar","23-25","","",""],["n5850722886","Vinoteca Foster",45.425526,11.912907,"bar","Via Madonna della Salute 76","","",""],["n4703713421","Zanellato",45.40637,11.875348,"bar","Via dei Fabbri 22","+39049650252","https://facebook.com/zanellatopadova",""],["n13277613490","Zebra Baking",45.411945,11.892937,"pastry","","","",""],["n6296459813","caffe’ diemme",45.400498,11.884225,"bar","","","",""],["n11592854259","caffè",45.42347,11.921531,"cafe","","","",""],["n2860121079","centrale",45.425333,11.897729,"cafe","","","",""],["n10768996905","il Gioiellino",45.4098,11.847994,"cafe","","","","Mo-Fr 06:30-22:30; Sa 06:30-13:00"],["n1537001883","natoo",45.417388,11.880008,"cafe","","","",""]];
+let PLACES = RAW_PLACES.map(r => ({
+  id: r[0], name: r[1], lat: r[2], lon: r[3], category: r[4],
+  address: r[5], phone: r[6], website: r[7], hours: r[8],
+  source: "osm"
+}));
+
+const CAT_LABEL = {bakery:"Forno", pastry:"Pasticceria", cafe:"Caffè", bar:"Bar"};
+const CAT_ICON = {bakery:"🥖", pastry:"🍰", cafe:"☕", bar:"🍷"};
+const CAT_COLOR = {bakery:"#c38a3a", pastry:"#8b1e2e", cafe:"#5a4735", bar:"#2a5d4a"};
+
+// Criteri di valutazione (validi per qualsiasi pastina)
+const CRITERIA = [
+  {key:"ripieno",   label:"Ripieno / interno",   desc:"il cuore del dolce"},
+  {key:"pasta",     label:"Sfoglia / esterno",   desc:"consistenza, cottura"},
+  {key:"forma",     label:"Forma e porzione",    desc:"presentazione, giusta dose"},
+  {key:"rapporto",  label:"Rapporto qualità/prezzo", desc:""},
+];
+
+// Pastine tradizionali padovane (default, sempre disponibili).
+// Gli utenti possono aggiungerne altre custom (storage condiviso).
+const DEFAULT_PASTRIES = [
+  {key:"pastina_riso", name:"Pastina di riso",   emoji:"🍚", desc:"sfoglia con ripieno di riso al latte e limone — la regina della merenda padovana"},
+  {key:"greca",        name:"Greca",             emoji:"🥐", desc:"pastina sfogliata a spirale con crema o cioccolato"},
+  {key:"punta",        name:"Punta",             emoji:"🔺", desc:"sfoglia triangolare farcita, classica delle vetrine venete"},
+  {key:"zaleto",       name:"Zaleto (zaeto)",    emoji:"🌽", desc:"biscotto rustico di farina gialla, uvetta e pinoli"},
+  {key:"fugassa",      name:"Fugassa padovana",  emoji:"🍞", desc:"focaccia dolce lievitata, tradizione pasquale"},
+  {key:"pazientina",   name:"Pazientina (fetta)",emoji:"🎂", desc:"strati di pasta bresciana, pan di Spagna padovano e zabaione"},
+  {key:"dolce_santo",  name:"Dolce del Santo",   emoji:"⛪", desc:"dolce dedicato a Sant'Antonio, varianti molteplici"},
+  {key:"crostoli",     name:"Crostoli / galani", emoji:"🎭", desc:"sfoglia fritta carnevalesca (stagionale)"},
+  {key:"frittella",    name:"Frittella veneziana", emoji:"🍩", desc:"frittella tonda con crema, zabaione o uvetta"},
+  {key:"pazientini",   name:"Pazientini",        emoji:"🍪", desc:"biscotti morbidi a base di mandorla"},
+];
+
+// ====== STORAGE (backend KV via /api/kv) ======
+const API = ""; // stessa origine
+async function _api(path, opts={}){
+  const r = await fetch(API + path, {
+    credentials: "include",
+    headers: opts.body ? {"Content-Type":"application/json"} : undefined,
+    ...opts,
+  });
+  return r;
+}
+async function sget(k, shared=false){
+  try{
+    const r = await _api(`/api/kv?key=${encodeURIComponent(k)}&shared=${shared}`);
+    if(!r.ok) return null;
+    const j = await r.json();
+    return JSON.parse(j.value);
+  }catch(e){ return null }
+}
+async function sset(k, v, shared=false){
+  try{
+    const r = await _api(`/api/kv?key=${encodeURIComponent(k)}&shared=${shared}`, {
+      method:"PUT",
+      body: JSON.stringify({value: JSON.stringify(v)}),
+    });
+    if(!r.ok){
+      if(r.status === 401){ toast("Sessione scaduta — accedi di nuovo"); showLogin(); }
+      else if(r.status === 413){ toast("File troppo grande (max 6 MB)"); }
+      else{ console.warn("storage set failed", r.status); }
+      return false;
+    }
+    return true;
+  }catch(e){ console.warn("storage set failed", e); return false }
+}
+async function slist(prefix, shared=false){
+  try{
+    const r = await _api(`/api/kv/list?prefix=${encodeURIComponent(prefix)}&shared=${shared}`);
+    if(!r.ok) return [];
+    const j = await r.json();
+    return j.keys || [];
+  }catch(e){ return [] }
+}
+async function sscan(prefix, shared=false){
+  // ritorna [{key, value: parsedObj}] in una sola chiamata
+  try{
+    const r = await _api(`/api/kv/scan?prefix=${encodeURIComponent(prefix)}&shared=${shared}`);
+    if(!r.ok) return [];
+    const j = await r.json();
+    const out = [];
+    for(const it of (j.items || [])){
+      try{ out.push({key: it.key, value: JSON.parse(it.value)}); }
+      catch(_){}
+    }
+    return out;
+  }catch(e){ return [] }
+}
+async function sdel(k, shared=false){
+  try{
+    const r = await _api(`/api/kv?key=${encodeURIComponent(k)}&shared=${shared}`, {method:"DELETE"});
+    return r.ok;
+  }catch(e){ return false }
+}
+
+// ====== STATO ======
+const STATE = {
+  currentUser: null,   // {id, name}
+  filter: "all",
+  query: "",
+  sort: "name",
+  pastryFilter: null,  // se impostato, filtra solo locali che hanno questa pastina disponibile
+  selected: null,
+  reviewsByPlace: {},  // pid -> array di {pastryKey, ...}
+  allReviews: [],
+  customPastries: [],  // pastine aggiunte dagli utenti
+  availability: {},    // pid -> {pastryKey: {state:"yes"|"no"|"unknown", userId, userName, ts}}
+};
+
+// ====== UTENTE: login username + password (backend FastAPI) ======
+async function loadUser(){
+  try{
+    const r = await _api("/api/auth/me");
+    if(r.ok){
+      const j = await r.json();
+      if(j.user){
+        STATE.currentUser = {
+          id: j.user.id,
+          name: j.user.username,
+          email: j.user.email,
+          isAdmin: !!j.user.isAdmin,
+        };
+      }
+    }
+  }catch(e){}
+  renderUserbar();
+}
+async function loginWithPassword(username, password){
+  const r = await _api("/api/auth/login", {
+    method:"POST",
+    body: JSON.stringify({username, password}),
+  });
+  if(!r.ok){
+    const msg = r.status === 401 ? "Username o password errati" : "Errore di accesso";
+    toast(msg);
+    return false;
+  }
+  const u = await r.json();
+  STATE.currentUser = {id: u.id, name: u.username, email: u.email, isAdmin: !!u.isAdmin};
+  renderUserbar();
+  toast("Benvenuto, " + u.username);
+  return true;
+}
+async function registerWithPassword(username, password, email){
+  const r = await _api("/api/auth/register", {
+    method:"POST",
+    body: JSON.stringify({username, password, email: email || null}),
+  });
+  if(!r.ok){
+    let msg = "Errore in registrazione";
+    try{ const j = await r.json(); if(j.detail) msg = j.detail }catch(_){}
+    toast(msg);
+    return false;
+  }
+  const u = await r.json();
+  STATE.currentUser = {id: u.id, name: u.username, email: u.email, isAdmin: !!u.isAdmin};
+  renderUserbar();
+  toast("Account creato. Benvenuto, " + u.username);
+  return true;
+}
+async function logout(){
+  try{ await _api("/api/auth/logout", {method:"POST"}); }catch(_){}
+  STATE.currentUser = null;
+  renderUserbar();
+  toast("Sei uscito.");
+}
+
+function renderUserbar(){
+  const el = document.getElementById("userbar");
+  if(STATE.currentUser){
+    const n = STATE.currentUser.name;
+    const init = n.slice(0,1).toUpperCase();
+    const adminBadge = STATE.currentUser.isAdmin ? `<span class="admin-badge">admin</span>` : "";
+    el.innerHTML = `
+      <div class="avatar">${init}</div>
+      <div class="who"><b>${escapeHtml(n)}${adminBadge}</b><span>profilo recensore</span></div>
+      <button class="linkbtn" onclick="showMyReviews()">le mie recensioni</button>
+      <button class="linkbtn" onclick="logout()">esci</button>
+    `;
+  }else{
+    el.innerHTML = `
+      <div class="avatar" style="background:var(--bg-2);color:var(--ink-soft)">?</div>
+      <div class="who"><b>Ospite</b><span>accedi per recensire</span></div>
+      <button class="linkbtn" onclick="showLogin()">entra</button>
+    `;
+  }
+}
+
+function showLogin(mode){
+  mode = mode || "login";
+  const isLogin = mode === "login";
+  const html = `
+    <div class="login">
+      <div class="kicker">${isLogin ? "Accesso" : "Nuovo account"}</div>
+      <h2 style="font-size:24px;margin:6px 0 6px">${isLogin ? "Bentornato" : "Crea il tuo account"}</h2>
+      <p class="hint" style="margin-bottom:14px">${isLogin
+        ? "Inserisci username e password per firmare le tue recensioni."
+        : "Username + password. L'email è facoltativa, serve solo se vuoi recuperare l'account."}</p>
+      <div class="auth-tabs">
+        <button class="auth-tab ${isLogin?'active':''}" onclick="showLogin('login')">Entra</button>
+        <button class="auth-tab ${!isLogin?'active':''}" onclick="showLogin('register')">Crea account</button>
+      </div>
+      <input id="auth-username" placeholder="username" autocomplete="username" autofocus />
+      <input id="auth-password" type="password" placeholder="password" autocomplete="${isLogin?'current-password':'new-password'}" />
+      ${isLogin ? "" : `<input id="auth-email" type="email" placeholder="email (facoltativa)" autocomplete="email" />`}
+      <button class="btn-submit" onclick="doAuth('${mode}')">${isLogin ? "Entra" : "Crea account"}</button>
+      <p class="hint">${isLogin
+        ? "Non hai ancora un account? <a href=\"#\" onclick=\"event.preventDefault();showLogin('register')\">Creane uno</a>."
+        : "Hai già un account? <a href=\"#\" onclick=\"event.preventDefault();showLogin('login')\">Accedi</a>."}</p>
+    </div>
+  `;
+  openModal(html);
+  setTimeout(()=>{
+    const u = document.getElementById("auth-username");
+    if(u) u.focus();
+    const p = document.getElementById("auth-password");
+    if(p) p.addEventListener("keydown", e=>{ if(e.key==="Enter") doAuth(mode); });
+    if(u) u.addEventListener("keydown", e=>{ if(e.key==="Enter"){ if(p) p.focus(); }});
+  },50);
+}
+async function doAuth(mode){
+  const username = (document.getElementById("auth-username")||{}).value || "";
+  const password = (document.getElementById("auth-password")||{}).value || "";
+  const emailEl = document.getElementById("auth-email");
+  const email = emailEl ? emailEl.value : "";
+  if(!username.trim()){ toast("Username obbligatorio"); return }
+  if(!password){ toast("Password obbligatoria"); return }
+  if(mode !== "login" && password.length < 6){ toast("La password deve avere almeno 6 caratteri"); return }
+  const ok = mode === "login"
+    ? await loginWithPassword(username.trim(), password)
+    : await registerWithPassword(username.trim(), password, email.trim());
+  if(ok) closeModal();
+}
+
+// ====== RECENSIONI ======
+// key: review:<placeId>:<reviewId>  valore: {id, placeId, userId, userName, crits:{}, score, text, photos:[dataURLs], ts}
+async function loadReviews(){
+  const items = await sscan("review:", true);
+  const arr = items.map(it=>it.value).filter(Boolean);
+  STATE.allReviews = arr;
+  STATE.reviewsByPlace = arr.reduce((m,r)=>{ (m[r.placeId] = m[r.placeId] || []).push(r); return m },{});
+  // ordina: più recenti prima
+  for(const pid in STATE.reviewsByPlace){
+    STATE.reviewsByPlace[pid].sort((a,b)=>b.ts-a.ts);
+  }
+  if(typeof populatePastryFilter === "function") populatePastryFilter();
+}
+async function saveReview(placeId, data){
+  if(!STATE.currentUser){ showLogin(); return }
+  const id = "r_" + Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+  const rev = {
+    id, placeId,
+    pastryKey: data.pastryKey,
+    userId: STATE.currentUser.id,
+    userName: STATE.currentUser.name,
+    crits: data.crits,
+    score: data.score,
+    text: data.text || "",
+    photos: data.photos || [],
+    ts: Date.now(),
+  };
+  const key = `review:${placeId}:${id}`;
+  const ok = await sset(key, rev, true);
+  if(!ok){ toast("Errore: recensione non salvata (forse foto troppo pesanti)"); return false }
+  // se l'utente ha recensito una pastina qui, di fatto sta dichiarando che è disponibile
+  await setAvailability(placeId, data.pastryKey, "yes", {silent:true});
+  await loadReviews();
+  return true;
+}
+async function deleteReview(rev){
+  if(!STATE.currentUser || rev.userId !== STATE.currentUser.id){ toast("Non puoi cancellare questa recensione"); return }
+  if(!confirm("Eliminare la tua recensione?")) return;
+  await sdel(`review:${rev.placeId}:${rev.id}`, true);
+  await loadReviews();
+  toast("Recensione eliminata");
+  if(STATE.selected && STATE.selected.id === rev.placeId) openPlace(STATE.selected);
+  else { renderList(); refreshMarkers() }
+}
+
+// statistiche complessive di un locale (media di tutte le pastine recensite)
+function placeStats(placeId){
+  const revs = STATE.reviewsByPlace[placeId] || [];
+  if(!revs.length) return {avg:null, n:0, crits:{}, byPastry:{}};
+  let sum = 0;
+  const critSums = {};
+  for(const c of CRITERIA) critSums[c.key] = 0;
+  // raggruppa per pastina
+  const byPastry = {};
+  for(const r of revs){
+    sum += r.score;
+    for(const c of CRITERIA) critSums[c.key] += (r.crits?.[c.key] || 0);
+    const pk = r.pastryKey || "_legacy";
+    (byPastry[pk] = byPastry[pk] || []).push(r);
+  }
+  const crits = {};
+  for(const c of CRITERIA) crits[c.key] = critSums[c.key]/revs.length;
+  // media per pastina
+  const pastryAvg = {};
+  for(const pk in byPastry){
+    const arr = byPastry[pk];
+    pastryAvg[pk] = {n: arr.length, avg: arr.reduce((a,b)=>a+b.score,0)/arr.length};
+  }
+  return {avg:sum/revs.length, n:revs.length, crits, byPastry: pastryAvg};
+}
+
+// ====== PASTINE: default + custom ======
+function allPastries(){
+  return [...DEFAULT_PASTRIES, ...STATE.customPastries];
+}
+function getPastry(key){
+  return allPastries().find(p=>p.key===key);
+}
+
+async function loadCustomPastries(){
+  const items = await sscan("pastry:", true);
+  const arr = items.map(it=>it.value).filter(p=>p && p.key);
+  arr.sort((a,b)=>(a.ts||0)-(b.ts||0));
+  STATE.customPastries = arr;
+}
+
+async function addCustomPastry(name, desc){
+  if(!STATE.currentUser){ showLogin(); return null }
+  name = (name||"").trim();
+  if(!name) return null;
+  const key = "u_" + name.toLowerCase()
+    .replace(/[àáâãä]/g,"a").replace(/[èéêë]/g,"e").replace(/[ìíîï]/g,"i")
+    .replace(/[òóôõö]/g,"o").replace(/[ùúûü]/g,"u")
+    .replace(/[^a-z0-9]+/g,"_").replace(/^_+|_+$/g,"").slice(0,30);
+  // controllo duplicati
+  if(allPastries().some(p=>p.key===key || p.name.toLowerCase() === name.toLowerCase())){
+    toast(`"${name}" esiste già nell'elenco`);
+    return null;
+  }
+  const pastry = {
+    key, name,
+    emoji: "✨",
+    desc: (desc||"").trim(),
+    addedBy: {id:STATE.currentUser.id, name:STATE.currentUser.name},
+    ts: Date.now(),
+    custom: true,
+  };
+  const ok = await sset("pastry:"+key, pastry, true);
+  if(!ok){ toast("Errore nel salvataggio"); return null }
+  await loadCustomPastries();
+  if(typeof populatePastryFilter === "function") populatePastryFilter();
+  return pastry;
+}
+
+async function deleteCustomPastry(key){
+  const p = STATE.customPastries.find(x=>x.key===key);
+  if(!p) return;
+  if(!STATE.currentUser || STATE.currentUser.id !== p.addedBy?.id){
+    toast("Solo chi l'ha aggiunta può eliminarla"); return;
+  }
+  // controlla se in uso
+  const inUseReviews = STATE.allReviews.filter(r=>r.pastryKey===key);
+  const inUseAvail = Object.values(STATE.availability).filter(a=>a[key]).length;
+  if(inUseReviews.length > 0){
+    toast(`Non posso eliminare: ${inUseReviews.length} recensioni la usano`);
+    return;
+  }
+  if(!confirm(`Eliminare "${p.name}" dall'elenco delle pastine?${inUseAvail?` (${inUseAvail} segnalazioni di disponibilità andranno perse)`:''}`)) return;
+  await sdel("pastry:"+key, true);
+  // rimuovi anche le segnalazioni
+  for(const pid in STATE.availability){
+    if(STATE.availability[pid][key]){
+      const allKey = `avail:${pid}:${key}`;
+      await sdel(allKey, true);
+    }
+  }
+  await loadCustomPastries();
+  await loadAvailability();
+  toast("Pastina eliminata");
+}
+
+// ====== DISPONIBILITÀ ======
+// key: avail:<placeId>:<pastryKey>  valore: {placeId, pastryKey, state:"yes"|"no"|"unknown", userId, userName, ts}
+async function loadAvailability(){
+  const items = await sscan("avail:", true);
+  const map = {};
+  for(const it of items){
+    const a = it.value;
+    if(a && a.placeId && a.pastryKey){
+      (map[a.placeId] = map[a.placeId] || {})[a.pastryKey] = a;
+    }
+  }
+  STATE.availability = map;
+}
+
+async function setAvailability(placeId, pastryKey, state, opts={}){
+  if(!STATE.currentUser){
+    if(!opts.silent) showLogin();
+    return false;
+  }
+  const a = {
+    placeId, pastryKey, state,
+    userId: STATE.currentUser.id,
+    userName: STATE.currentUser.name,
+    ts: Date.now(),
+  };
+  const key = `avail:${placeId}:${pastryKey}`;
+  if(state === "unknown"){
+    await sdel(key, true);
+  }else{
+    const ok = await sset(key, a, true);
+    if(!ok){ toast("Errore nel salvataggio"); return false }
+  }
+  await loadAvailability();
+  if(typeof populatePastryFilter === "function") populatePastryFilter();
+  if(!opts.silent) toast("Segnalazione salvata");
+  return true;
+}
+
+function getAvailability(placeId, pastryKey){
+  return STATE.availability[placeId]?.[pastryKey];
+}
+
+// ====== LUOGHI AGGIUNTI DAGLI UTENTI ======
+// key: place:<id>  valore: {id, name, lat, lon, category, address, phone, website, hours, addedBy:{id,name}, ts, source:"user"}
+async function loadCustomPlaces(){
+  const items = await sscan("place:", true);
+  const customs = items.map(it=>it.value).filter(p => p && p.id);
+  // rimuove eventuali precedenti custom da PLACES e li rimette
+  PLACES = PLACES.filter(p => p.source === "osm").concat(customs);
+}
+
+// distanza approssimata in metri (formula equirettangolare)
+function distMeters(lat1, lon1, lat2, lon2){
+  const R = 6371000;
+  const dLat = (lat2-lat1) * Math.PI/180;
+  const dLon = (lon2-lon1) * Math.PI/180;
+  const a = (lat1+lat2)/2 * Math.PI/180;
+  return Math.sqrt((dLat*R)**2 + (dLon*R*Math.cos(a))**2);
+}
+
+function findNearbyDuplicates(name, lat, lon, radiusM=120){
+  const nameLower = name.toLowerCase().trim();
+  if(!nameLower || lat==null) return [];
+  const out = [];
+  for(const p of PLACES){
+    const d = distMeters(lat, lon, p.lat, p.lon);
+    if(d > radiusM) continue;
+    const pname = p.name.toLowerCase();
+    // match per nome simile o per prossimità < 30m
+    const nameMatch = pname.includes(nameLower) || nameLower.includes(pname) || levenshtein(pname, nameLower) <= 3;
+    if(nameMatch || d < 30) out.push({p, d});
+  }
+  return out.sort((a,b)=>a.d-b.d).slice(0,4);
+}
+
+function levenshtein(a, b){
+  if(a.length===0) return b.length;
+  if(b.length===0) return a.length;
+  const m = Array.from({length:a.length+1},(_,i)=>[i]);
+  for(let j=1;j<=b.length;j++) m[0][j] = j;
+  for(let i=1;i<=a.length;i++) for(let j=1;j<=b.length;j++)
+    m[i][j] = a[i-1]===b[j-1] ? m[i-1][j-1] : 1+Math.min(m[i-1][j-1],m[i][j-1],m[i-1][j]);
+  return m[a.length][b.length];
+}
+
+async function saveCustomPlace(data){
+  if(!STATE.currentUser){ showLogin(); return null }
+  const id = "u_" + Date.now().toString(36) + Math.random().toString(36).slice(2,5);
+  const place = {
+    id,
+    name: data.name.trim(),
+    lat: parseFloat(data.lat),
+    lon: parseFloat(data.lon),
+    category: data.category,
+    address: (data.address||"").trim(),
+    phone: (data.phone||"").trim(),
+    website: (data.website||"").trim(),
+    hours: (data.hours||"").trim(),
+    addedBy: {id: STATE.currentUser.id, name: STATE.currentUser.name},
+    ts: Date.now(),
+    source: "user",
+  };
+  const ok = await sset("place:"+id, place, true);
+  if(!ok){ toast("Errore: luogo non salvato"); return null }
+  await loadCustomPlaces();
+  return place;
+}
+
+async function deleteCustomPlace(p){
+  if(!STATE.currentUser){ toast("Devi essere loggato"); return }
+  if(p.source !== "user"){ toast("Non è possibile eliminare i luoghi OSM"); return }
+  if(p.addedBy?.id !== STATE.currentUser.id){ toast("Solo chi l'ha aggiunto può eliminarlo"); return }
+  const revs = STATE.reviewsByPlace[p.id] || [];
+  if(revs.length > 0){
+    if(!confirm(`Questo luogo ha ${revs.length} recensione/i. Eliminandolo, anche le recensioni verranno rimosse. Procedere?`)) return;
+    for(const r of revs) await sdel(`review:${p.id}:${r.id}`, true);
+  }else{
+    if(!confirm("Eliminare questo luogo?")) return;
+  }
+  await sdel("place:"+p.id, true);
+  await loadCustomPlaces();
+  await loadReviews();
+  closeModal();
+  refreshMarkers();
+  renderList();
+  toast("Luogo eliminato");
+}
+
+// ====== RENDERING LISTA ======
+function filteredPlaces(){
+  const q = STATE.query.toLowerCase().trim();
+  let out = PLACES.filter(p=>{
+    if(STATE.filter !== "all" && p.category !== STATE.filter) return false;
+    if(STATE.pastryFilter){
+      // mostra solo locali dove questa pastina è marcata "yes" o ha recensioni
+      const a = getAvailability(p.id, STATE.pastryFilter);
+      const hasReview = (STATE.reviewsByPlace[p.id]||[]).some(r=>r.pastryKey===STATE.pastryFilter);
+      if(!(a?.state === "yes" || hasReview)) return false;
+    }
+    if(q){
+      return (p.name.toLowerCase().includes(q) ||
+              (p.address||"").toLowerCase().includes(q));
+    }
+    return true;
+  });
+  if(STATE.sort==="name") out.sort((a,b)=>a.name.localeCompare(b.name,"it"));
+  else if(STATE.sort==="score"){
+    out.sort((a,b)=>{
+      const sa = placeStats(a.id).avg, sb = placeStats(b.id).avg;
+      if(sa===null && sb===null) return a.name.localeCompare(b.name,"it");
+      if(sa===null) return 1;
+      if(sb===null) return -1;
+      return sb-sa;
+    });
+  }else if(STATE.sort==="reviews"){
+    out.sort((a,b)=>placeStats(b.id).n - placeStats(a.id).n || a.name.localeCompare(b.name,"it"));
+  }else if(STATE.sort==="recent"){
+    out.sort((a,b)=>{
+      const ra = STATE.reviewsByPlace[a.id]?.[0]?.ts || 0;
+      const rb = STATE.reviewsByPlace[b.id]?.[0]?.ts || 0;
+      return rb-ra;
+    });
+  }
+  return out;
+}
+
+function renderList(){
+  const places = filteredPlaces();
+  const container = document.getElementById("list");
+  if(!places.length){
+    container.innerHTML = `<div class="empty">Nessun locale trovato</div>`;
+    return;
+  }
+  container.innerHTML = places.map(p=>{
+    const st = placeStats(p.id);
+    const scoreHtml = st.avg!==null
+      ? `<span class="score-num">${st.avg.toFixed(1)}</span><span class="score-n">· ${st.n} ${st.n===1?"recensione":"recensioni"}</span>`
+      : `<span class="score-num none">nessuna recensione</span>`;
+    return `
+      <div class="item${STATE.selected?.id===p.id?' active':''}" data-id="${p.id}">
+        <div class="item-head">
+          <div class="item-name">${escapeHtml(p.name)}</div>
+          <div class="item-cat">${CAT_ICON[p.category]} ${CAT_LABEL[p.category]}</div>
+        </div>
+        ${p.address? `<div class="item-addr">${escapeHtml(p.address)}</div>` : ''}
+        <div class="item-score">${scoreHtml}</div>
+      </div>
+    `;
+  }).join("");
+
+  // conta
+  document.getElementById("cnt-all").textContent = `· ${PLACES.length}`;
+
+  // click
+  container.querySelectorAll(".item").forEach(el=>{
+    el.addEventListener("click",()=>{
+      const p = PLACES.find(x=>x.id===el.dataset.id);
+      if(p){ openPlace(p); flyTo(p) }
+    });
+  });
+}
+
+// ====== MAPPA ======
+let map, markers = [];
+
+function initMap(){
+  map = new maplibregl.Map({
+    container:"map",
+    style:{
+      version:8,
+      sources:{
+        osm:{type:"raster",tiles:["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],tileSize:256,attribution:"© OpenStreetMap contributors"}
+      },
+      layers:[{id:"osm",type:"raster",source:"osm"}]
+    },
+    center:[11.8767, 45.4064],
+    zoom:13.5,
+    minZoom:11, maxZoom:19,
+  });
+  map.addControl(new maplibregl.NavigationControl({showCompass:false}),"bottom-right");
+  map.addControl(new maplibregl.AttributionControl({compact:true}));
+  map.on("load", refreshMarkers);
+}
+
+function refreshMarkers(){
+  markers.forEach(m=>m.remove());
+  markers = [];
+  const visible = filteredPlaces();
+  for(const p of visible){
+    const st = placeStats(p.id);
+    const el = document.createElement("div");
+    const rated = st.n>0;
+    const isCustom = p.source === "user";
+    el.className = "mk "+p.category+(rated?" rated":"")+(isCustom?" custom":"");
+    el.innerHTML = rated
+      ? `<span style="color:#fff;font-size:9px">${CAT_ICON[p.category]}</span><span class="badge">${st.avg.toFixed(1)}</span>`
+      : `<span style="color:#fff;font-size:9px">${CAT_ICON[p.category]}</span>`;
+    el.style.position = "relative";
+    if(isCustom) el.title = `Aggiunto da ${p.addedBy?.name || "utente"}`;
+    el.addEventListener("click",(e)=>{
+      e.stopPropagation();
+      openPlace(p);
+    });
+    const m = new maplibregl.Marker({element:el, anchor:"center"})
+      .setLngLat([p.lon, p.lat])
+      .addTo(map);
+    markers.push(m);
+  }
+}
+
+function flyTo(p){
+  if(!map) return;
+  map.flyTo({center:[p.lon, p.lat], zoom:16, speed:1.2, essential:true});
+}
+
+// ====== MODAL LUOGO ======
+function openPlace(p, tab="recensioni"){
+  STATE.selected = p;
+  renderList();
+  const st = placeStats(p.id);
+  const revs = STATE.reviewsByPlace[p.id] || [];
+  const pct = st.avg!==null ? (st.avg/10)*100 : 0;
+
+  const critBars = CRITERIA.map(c=>{
+    const v = st.crits[c.key] || 0;
+    return `
+      <span>${c.label}</span>
+      <div style="display:flex;align-items:center;gap:8px">
+        <div class="bar" style="flex:1"><span style="width:${v*10}%"></span></div>
+        <b style="font-family:'Fraunces',serif;color:var(--accent);font-size:12px;min-width:26px;text-align:right">${v? v.toFixed(1) : '–'}</b>
+      </div>
+    `;
+  }).join("");
+
+  const scoreBlock = st.avg!==null ? `
+    <div class="score-wrap">
+      <div class="score-ring" style="--pct:${pct}">
+        <div class="n">${st.avg.toFixed(1)}</div>
+      </div>
+      <div class="score-meta" style="flex:1">
+        <h4>Voto medio del locale</h4>
+        <div style="font-size:12px;color:var(--ink-soft);margin-bottom:4px">${st.n} ${st.n===1?"recensione":"recensioni"} su ${Object.keys(st.byPastry).length} ${Object.keys(st.byPastry).length===1?'pastina':'pastine'} diverse</div>
+        <div class="bars">${critBars}</div>
+      </div>
+    </div>
+  ` : `
+    <div class="score-wrap">
+      <div class="score-ring none"><div class="n">n.d.</div></div>
+      <div class="score-meta">
+        <h4>Nessuna recensione</h4>
+        <div style="font-size:12px;color:var(--ink-soft)">Segnala quali pastine trovi qui e lasciane una recensione.</div>
+      </div>
+    </div>
+  `;
+
+  // === Matrice disponibilità ===
+  const availHtml = renderAvailabilityGrid(p);
+
+  const formHtml = STATE.currentUser ? renderForm(p) : `
+    <div class="formbox" style="text-align:center;padding:20px">
+      <p style="font-style:italic;color:var(--ink-soft);margin-bottom:10px">Per segnalare disponibilità o lasciare recensioni serve un nome utente.</p>
+      <button class="btn-submit" onclick="showLogin()">Entra</button>
+    </div>
+  `;
+
+  // raggruppa recensioni per pastina
+  const byPastry = {};
+  for(const r of revs){
+    const pk = r.pastryKey || "_legacy";
+    (byPastry[pk] = byPastry[pk] || []).push(r);
+  }
+  const pastryOrder = Object.keys(byPastry).sort((a,b)=>{
+    return (byPastry[b].length - byPastry[a].length) ||
+           (byPastry[b][0].ts - byPastry[a][0].ts);
+  });
+  const reviewsHtml = revs.length ? pastryOrder.map(pk=>{
+    const arr = byPastry[pk];
+    const past = pk==="_legacy" ? {name:"Recensione (versione precedente)", emoji:"📝"} : (getPastry(pk) || {name:pk, emoji:"❔"});
+    const pastryAvg = arr.reduce((a,b)=>a+b.score,0)/arr.length;
+    return `
+      <div class="pastry-block">
+        <div class="pastry-block-head">
+          <span class="pastry-emoji">${past.emoji}</span>
+          <h4>${escapeHtml(past.name)}</h4>
+          <span class="pastry-block-avg">${pastryAvg.toFixed(1)} <span>· ${arr.length} ${arr.length===1?'rec.':'recc.'}</span></span>
+        </div>
+        ${arr.map(r=>renderReview(r)).join("")}
+      </div>
+    `;
+  }).join("") : `<div class="empty">Nessuna recensione · sii il primo</div>`;
+
+  const meta = [
+    p.address,
+    p.hours ? "🕐 "+p.hours : null,
+    p.phone ? '📞 '+p.phone : null,
+    p.website ? `<a href="${escapeAttr(p.website)}" target="_blank" rel="noopener" style="color:var(--accent)">🌐 sito web</a>` : null,
+  ].filter(Boolean).join(" · ");
+
+  const isCustom = p.source === "user";
+  const isOwner = isCustom && STATE.currentUser && p.addedBy?.id === STATE.currentUser.id;
+  const addedByLine = isCustom ? `
+    <div class="added-by">
+      ✱ Luogo aggiunto da ${isOwner ? '<span class="you">te</span>' : escapeHtml(p.addedBy?.name || "un utente")}
+      ${isOwner ? `· <button class="linkbtn" style="font-size:11px" onclick='deleteCustomPlaceById("${p.id}")'>elimina</button>` : ''}
+    </div>` : '';
+
+  const html = `
+    <div class="modal-head">
+      <button class="closex" onclick="closeModal()">×</button>
+      <div class="kicker">${CAT_ICON[p.category]} ${CAT_LABEL[p.category]}</div>
+      <h2>${escapeHtml(p.name)}</h2>
+      ${meta ? `<div class="meta">${meta}</div>` : ''}
+      ${addedByLine}
+    </div>
+    <div class="modal-body">
+      ${scoreBlock}
+      ${availHtml}
+      ${formHtml}
+      <div class="reviews">
+        <h3>Recensioni delle pastine (${revs.length})</h3>
+        ${reviewsHtml}
+      </div>
+    </div>
+  `;
+  openModal(html);
+  bindAvailabilityGrid(p);
+  bindForm(p);
+}
+
+// === MATRICE DISPONIBILITÀ ===
+function renderAvailabilityGrid(p){
+  const pastries = allPastries();
+  const rows = pastries.map(past=>{
+    const a = getAvailability(p.id, past.key);
+    const state = a?.state || "unknown";
+    const meta = a ? `<span class="avail-by">segnalato da ${escapeHtml(a.userName)}</span>` : '';
+    const stats = (placeStats(p.id).byPastry||{})[past.key];
+    const ratingBadge = stats ? `<span class="avail-rating">${stats.avg.toFixed(1)} <span>· ${stats.n}</span></span>` : '';
+    const isCustom = past.custom;
+    const canDelete = isCustom && STATE.currentUser && past.addedBy?.id === STATE.currentUser.id;
+    return `
+      <div class="avail-row" data-past="${past.key}">
+        <div class="avail-left">
+          <span class="avail-emoji">${past.emoji}</span>
+          <div class="avail-info">
+            <b>${escapeHtml(past.name)}${isCustom?' <span class="avail-custom" title="aggiunta da '+escapeHtml(past.addedBy?.name||'utente')+'">✱</span>':''}</b>
+            ${past.desc?`<span>${escapeHtml(past.desc)}</span>`:''}
+            ${meta}
+          </div>
+          ${ratingBadge}
+        </div>
+        <div class="avail-toggles" data-past="${past.key}">
+          <button class="avail-btn yes ${state==='yes'?'on':''}"     data-state="yes"     title="Hanno questa pastina">✓</button>
+          <button class="avail-btn no  ${state==='no'?'on':''}"      data-state="no"      title="Non l'hanno">✗</button>
+          <button class="avail-btn unk ${state==='unknown'?'on':''}" data-state="unknown" title="Non lo so">?</button>
+          ${canDelete?`<button class="avail-del" data-del="${past.key}" title="Elimina questa pastina dall'elenco">🗑</button>`:''}
+        </div>
+      </div>
+    `;
+  }).join("");
+
+  const canAdd = !!STATE.currentUser;
+  return `
+    <div class="avail-grid">
+      <div class="avail-head">
+        <h3>Quali pastine trovi qui?</h3>
+        <p class="avail-sub">Segnala quali pastine sono disponibili in questo locale. La tua segnalazione aiuta gli altri.</p>
+      </div>
+      ${rows}
+      ${canAdd ? `
+        <div class="avail-addrow">
+          <button class="addpastrybtn" onclick="showAddPastry('${p.id}')">＋ Proponi un'altra pastina della tradizione</button>
+        </div>
+      ` : ''}
+    </div>
+  `;
+}
+
+function bindAvailabilityGrid(p){
+  document.querySelectorAll(".avail-toggles").forEach(group=>{
+    const past = group.dataset.past;
+    group.querySelectorAll(".avail-btn").forEach(btn=>{
+      btn.addEventListener("click", async ()=>{
+        if(!STATE.currentUser){ showLogin(); return }
+        const state = btn.dataset.state;
+        await setAvailability(p.id, past, state);
+        // re-render solo del modal
+        openPlace(p);
+      });
+    });
+    const del = group.querySelector(".avail-del");
+    if(del){
+      del.addEventListener("click", async ()=>{
+        await deleteCustomPastry(del.dataset.del);
+        openPlace(p);
+      });
+    }
+  });
+}
+
+window.showAddPastry = (placeId)=>{
+  const p = PLACES.find(x=>x.id===placeId);
+  if(!STATE.currentUser){ showLogin(); return }
+  const html = `
+    <div class="modal-head">
+      <button class="closex" onclick="reopenPlaceFrom('${placeId}')">×</button>
+      <div class="kicker">Tradizione padovana</div>
+      <h2>Aggiungi una pastina</h2>
+      <div class="meta">Proponi una pastina che non è nell'elenco predefinito. Sarà visibile a tutti gli utenti.</div>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <label>Nome della pastina <span class="req">*</span></label>
+        <input type="text" id="np-name" placeholder="es. Bussolà, Esse, Baicoli, Fregolotta..." autofocus />
+      </div>
+      <div class="field">
+        <label>Breve descrizione</label>
+        <textarea id="np-desc" placeholder="ingrediente principale, forma, tradizione..."></textarea>
+        <div class="hint">Aiuta gli altri a riconoscerla. Facoltativo.</div>
+      </div>
+      <button class="btn-submit" id="np-submit">Aggiungi all'elenco</button>
+      <button class="linkbtn" style="margin-left:14px" onclick="reopenPlaceFrom('${placeId}')">annulla</button>
+      <div style="margin-top:18px;padding-top:14px;border-top:1px dashed var(--line);font-size:12px;color:var(--ink-soft)">
+        <b style="font-family:'Fraunces',serif;color:var(--ink)">Già nell'elenco predefinito:</b><br/>
+        ${DEFAULT_PASTRIES.map(p=>p.emoji+" "+p.name).join(" · ")}
+        ${STATE.customPastries.length ? `<br/><br/><b style="font-family:'Fraunces',serif;color:var(--ink)">Aggiunte dagli utenti:</b><br/>${STATE.customPastries.map(p=>p.emoji+" "+escapeHtml(p.name)).join(" · ")}`: ''}
+      </div>
+    </div>
+  `;
+  openModal(html);
+  setTimeout(()=>document.getElementById("np-name")?.focus(),50);
+  document.getElementById("np-submit").addEventListener("click", async ()=>{
+    const name = document.getElementById("np-name").value;
+    const desc = document.getElementById("np-desc").value;
+    const created = await addCustomPastry(name, desc);
+    if(created){
+      toast(`"${created.name}" aggiunta all'elenco`);
+      reopenPlaceFrom(placeId);
+    }
+  });
+};
+
+window.reopenPlaceFrom = (placeId)=>{
+  closeModal();
+  const p = PLACES.find(x=>x.id===placeId);
+  if(p) openPlace(p);
+};
+
+function renderForm(p){
+  const myRevs = (STATE.reviewsByPlace[p.id] || []).filter(r=>r.userId===STATE.currentUser.id);
+  // pastine disponibili in questo locale (segnalate "yes" o già recensite)
+  const availPastries = allPastries().filter(past=>{
+    const a = getAvailability(p.id, past.key);
+    if(a?.state === "yes") return true;
+    // includi anche quelle che qualcuno ha già recensito
+    if(STATE.reviewsByPlace[p.id]?.some(r=>r.pastryKey===past.key)) return true;
+    return false;
+  });
+  // se nessuna è marcata disponibile, mostro tutte
+  const pastriesForSelect = availPastries.length ? availPastries : allPastries();
+
+  // pre-seleziono la prima non ancora recensita dall'utente, altrimenti la prima
+  const reviewedKeys = new Set(myRevs.map(r=>r.pastryKey));
+  const initial = pastriesForSelect.find(p=>!reviewedKeys.has(p.key)) || pastriesForSelect[0];
+  const initialKey = initial?.key || "";
+
+  const pastryOptions = pastriesForSelect.map(past=>{
+    const reviewed = reviewedKeys.has(past.key);
+    return `<option value="${past.key}"${past.key===initialKey?' selected':''}>${past.emoji} ${escapeHtml(past.name)}${reviewed?' · (già recensita, sarà aggiornata)':''}</option>`;
+  }).join("");
+
+  const myFor = (key) => myRevs.find(r=>r.pastryKey===key);
+  const mineNow = myFor(initialKey);
+  const vals = mineNow ? mineNow.crits : {};
+  const txt = mineNow ? mineNow.text : "";
+
+  const critInputs = CRITERIA.map(c=>{
+    const v = vals[c.key] ?? 7;
+    return `
+      <div class="crit">
+        <div class="crit-label">
+          <b>${c.label}</b>
+          <span class="crit-val" id="val-${c.key}">${(typeof v==='number'?v:7).toFixed(1)}</span>
+        </div>
+        ${c.desc?`<div style="font-size:11px;color:var(--ink-soft);margin-bottom:5px">${c.desc}</div>`:''}
+        <input class="slider" type="range" min="0" max="10" step="0.5" value="${v}" data-crit="${c.key}"/>
+      </div>
+    `;
+  }).join("");
+
+  return `
+    <div class="formbox" id="formbox">
+      <h3>Recensisci una pastina</h3>
+      <div class="field">
+        <label>Quale pastina stai recensendo?</label>
+        <select id="rev-pastry" class="pastry-select">${pastryOptions}</select>
+        <div class="hint" id="rev-pastry-hint">${initial?.desc?escapeHtml(initial.desc):''}</div>
+      </div>
+      <div id="rev-crits-area">
+        ${critInputs}
+        <textarea class="textfield" id="rev-text" placeholder="com'era? ripieno, sfoglia, presentazione...">${escapeHtml(txt)}</textarea>
+      </div>
+      <div class="photoinput">
+        <label for="rev-photo">📷 Aggiungi foto</label>
+        <input type="file" id="rev-photo" accept="image/*" multiple/>
+        <div id="photo-previews" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+      </div>
+      <button class="btn-submit" id="rev-submit">${mineNow?"Aggiorna recensione":"Pubblica recensione"}</button>
+    </div>
+  `;
+}
+
+let pendingPhotos = [];
+function bindForm(p){
+  pendingPhotos = [];
+  const box = document.getElementById("formbox");
+  if(!box) return;
+
+  // sliders
+  const bindSliders = ()=>{
+    box.querySelectorAll(".slider").forEach(sl=>{
+      sl.addEventListener("input", ()=>{
+        document.getElementById("val-"+sl.dataset.crit).textContent = parseFloat(sl.value).toFixed(1);
+      });
+    });
+  };
+  bindSliders();
+
+  // cambio pastina nel selector → aggiorna i valori se l'utente ne ha già una
+  const sel = document.getElementById("rev-pastry");
+  sel?.addEventListener("change", ()=>{
+    const key = sel.value;
+    const past = getPastry(key);
+    document.getElementById("rev-pastry-hint").textContent = past?.desc || '';
+    const myRevs = (STATE.reviewsByPlace[p.id] || []).filter(r=>r.userId===STATE.currentUser.id);
+    const mine = myRevs.find(r=>r.pastryKey===key);
+    // ri-render dei criteri
+    const vals = mine?.crits || {};
+    const txt = mine?.text || "";
+    const critInputs = CRITERIA.map(c=>{
+      const v = vals[c.key] ?? 7;
+      return `
+        <div class="crit">
+          <div class="crit-label">
+            <b>${c.label}</b>
+            <span class="crit-val" id="val-${c.key}">${(typeof v==='number'?v:7).toFixed(1)}</span>
+          </div>
+          ${c.desc?`<div style="font-size:11px;color:var(--ink-soft);margin-bottom:5px">${c.desc}</div>`:''}
+          <input class="slider" type="range" min="0" max="10" step="0.5" value="${v}" data-crit="${c.key}"/>
+        </div>
+      `;
+    }).join("");
+    document.getElementById("rev-crits-area").innerHTML = critInputs +
+      `<textarea class="textfield" id="rev-text" placeholder="com'era? ripieno, sfoglia, presentazione...">${escapeHtml(txt)}</textarea>`;
+    document.getElementById("rev-submit").textContent = mine?"Aggiorna recensione":"Pubblica recensione";
+    bindSliders();
+  });
+
+  // photo handling
+  const fileInput = document.getElementById("rev-photo");
+  const previews = document.getElementById("photo-previews");
+  fileInput?.addEventListener("change", async (e)=>{
+    for(const f of e.target.files){
+      try{
+        const data = await compressImage(f, 800, 0.75);
+        pendingPhotos.push(data);
+        const img = document.createElement("img");
+        img.src = data; img.className = "thumb";
+        img.title = "clicca per rimuovere";
+        img.addEventListener("click",()=>{
+          const idx = pendingPhotos.indexOf(data);
+          if(idx>=0) pendingPhotos.splice(idx,1);
+          img.remove();
+        });
+        previews.appendChild(img);
+      }catch(err){ console.warn(err); toast("Foto non caricata") }
+    }
+    fileInput.value = "";
+  });
+
+  // submit
+  document.getElementById("rev-submit")?.addEventListener("click", async ()=>{
+    const pastryKey = document.getElementById("rev-pastry").value;
+    if(!pastryKey){ toast("Scegli una pastina"); return }
+    const crits = {};
+    document.querySelectorAll("#rev-crits-area .slider").forEach(sl=> crits[sl.dataset.crit] = parseFloat(sl.value));
+    const score = Object.values(crits).reduce((a,b)=>a+b,0) / CRITERIA.length;
+    const text = document.getElementById("rev-text").value.trim();
+    // se l'utente ha già recensito QUESTA pastina, sostituisci
+    const myRevs = (STATE.reviewsByPlace[p.id] || []).filter(r=>r.userId===STATE.currentUser.id);
+    const mine = myRevs.find(r=>r.pastryKey===pastryKey);
+    if(mine) await sdel(`review:${p.id}:${mine.id}`, true);
+    const ok = await saveReview(p.id, {pastryKey, crits, score, text, photos: pendingPhotos});
+    if(ok){
+      toast(mine?"Recensione aggiornata":"Recensione pubblicata!");
+      pendingPhotos = [];
+      refreshMarkers();
+      openPlace(p);
+    }
+  });
+}
+
+window.deleteReviewById = async (rid, pid)=>{
+  const rev = (STATE.reviewsByPlace[pid]||[]).find(r=>r.id===rid);
+  if(rev) await deleteReview(rev);
+};
+
+function renderReview(r){
+  const d = new Date(r.ts).toLocaleDateString("it-IT",{day:"numeric",month:"long",year:"numeric"});
+  const critLine = CRITERIA.map(c=>{
+    const v = r.crits?.[c.key];
+    return v!==undefined ? `<span>${c.label.toLowerCase()} <b>${v.toFixed(1)}</b></span>` : '';
+  }).filter(Boolean).join("");
+  const canDel = STATE.currentUser && STATE.currentUser.id === r.userId;
+  const photos = (r.photos||[]).map(ph=>
+    `<img src="${ph}" onclick="viewImage('${ph.replace(/'/g,"\\'")}')"/>`
+  ).join("");
+  const initial = r.userName.slice(0,1).toUpperCase();
+  return `
+    <div class="review">
+      <div class="review-head">
+        <div class="review-author"><span class="av">${initial}</span>${escapeHtml(r.userName)}<span class="review-date">· ${d}</span></div>
+        <div class="review-score">${r.score.toFixed(1)}<span style="font-size:11px;color:var(--ink-soft);font-family:'Inter Tight';font-weight:400">/10</span></div>
+      </div>
+      <div class="review-crits">${critLine}</div>
+      ${r.text? `<div class="review-body">${escapeHtml(r.text)}</div>` : ''}
+      ${photos? `<div class="review-photos">${photos}</div>`:''}
+      ${canDel? `<button class="delbtn" onclick='deleteReviewById("${r.id}","${r.placeId}")'>elimina</button>` : ''}
+    </div>
+  `;
+}
+
+window.viewImage = (src)=>{
+  const d = document.createElement("div");
+  d.className = "imgview";
+  d.innerHTML = `<img src="${src}"/>`;
+  d.addEventListener("click",()=>d.remove());
+  document.body.appendChild(d);
+};
+
+// ====== AGGIUNGI LUOGO ======
+let pickedCoord = null;     // {lat, lon} scelte dalla mappa
+let pickerMarker = null;
+let pickerHandler = null;
+
+function showAddPlace(){
+  if(!STATE.currentUser){
+    showLogin();
+    // dopo il login l'utente dovrà ricliccare il pulsante; teniamo semplice
+    return;
+  }
+  pickedCoord = null;
+  const html = `
+    <div class="modal-head">
+      <button class="closex" onclick="closeAddPlace()">×</button>
+      <div class="kicker">Contribuisci alla guida</div>
+      <h2>Aggiungi un forno o pasticceria</h2>
+      <div class="meta">I luoghi che aggiungi saranno visibili a tutti gli altri recensori.</div>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <label>Categoria <span class="req">*</span></label>
+        <select id="ap-cat">
+          <option value="bakery">🥖 Forno / Panificio</option>
+          <option value="pastry">🍰 Pasticceria</option>
+        </select>
+        <div class="hint">Caffè e bar sono già coperti dai dati OpenStreetMap; questa funzione serve per aggiungere forni e pasticcerie mancanti.</div>
+      </div>
+
+      <div class="field">
+        <label>Nome del locale <span class="req">*</span></label>
+        <input type="text" id="ap-name" placeholder="es. Pasticceria Da Giulio" autofocus />
+      </div>
+
+      <div id="ap-dup-area"></div>
+
+      <div class="field">
+        <label>Posizione sulla mappa <span class="req">*</span></label>
+        <div id="ap-coord" class="coord-display empty">
+          <span style="flex:1">Nessuna posizione selezionata</span>
+          <button class="pickbtn" id="ap-pick">📍 Scegli sulla mappa</button>
+        </div>
+        <div class="hint">Clicca su "Scegli sulla mappa" e poi clicca esattamente sul punto dove si trova il locale.</div>
+      </div>
+
+      <div class="field">
+        <label>Indirizzo</label>
+        <input type="text" id="ap-addr" placeholder="es. Via Roma 12" />
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label>Telefono</label>
+          <input type="tel" id="ap-phone" placeholder="+39 049..." />
+        </div>
+        <div class="field">
+          <label>Sito web</label>
+          <input type="url" id="ap-web" placeholder="https://..." />
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Orari di apertura</label>
+        <input type="text" id="ap-hours" placeholder="es. Mar-Sab 7:00-19:00; Dom 8:00-13:00" />
+        <div class="hint">In formato libero, anche solo "chiuso il lunedì" se non sai di più.</div>
+      </div>
+
+      <button class="btn-submit" id="ap-submit">Aggiungi luogo</button>
+      <button class="linkbtn" style="margin-left:14px" onclick="closeAddPlace()">annulla</button>
+    </div>
+  `;
+  openModal(html);
+
+  // controlli duplicati live
+  const checkDup = ()=>{
+    const name = document.getElementById("ap-name").value;
+    const area = document.getElementById("ap-dup-area");
+    if(!name.trim() || !pickedCoord){ area.innerHTML=""; return }
+    const dups = findNearbyDuplicates(name, pickedCoord.lat, pickedCoord.lon);
+    if(dups.length){
+      area.innerHTML = `
+        <div class="dup-warn">
+          <b>⚠ Forse esiste già</b>
+          <div class="nearby">Vicino a questa posizione c'è già:</div>
+          ${dups.map(d=>`<div class="nearby">• ${escapeHtml(d.p.name)} (${CAT_LABEL[d.p.category]}) — a ${Math.round(d.d)}m</div>`).join("")}
+          <div class="nearby" style="margin-top:6px;font-style:italic">Verifica che non sia un duplicato prima di proseguire.</div>
+        </div>
+      `;
+    }else{
+      area.innerHTML = "";
+    }
+  };
+  document.getElementById("ap-name").addEventListener("input", checkDup);
+
+  document.getElementById("ap-pick").addEventListener("click", startPicking);
+
+  document.getElementById("ap-submit").addEventListener("click", async ()=>{
+    const name = document.getElementById("ap-name").value.trim();
+    const cat  = document.getElementById("ap-cat").value;
+    const addr = document.getElementById("ap-addr").value;
+    const phone = document.getElementById("ap-phone").value;
+    const web  = document.getElementById("ap-web").value;
+    const hours = document.getElementById("ap-hours").value;
+    if(!name){ toast("Serve almeno il nome"); return }
+    if(!pickedCoord){ toast("Devi posizionare il luogo sulla mappa"); return }
+    const data = {name, category:cat, address:addr, phone, website:web, hours,
+                  lat:pickedCoord.lat, lon:pickedCoord.lon};
+    const place = await saveCustomPlace(data);
+    if(place){
+      closeAddPlace();
+      toast("Luogo aggiunto! Lascia la prima recensione.");
+      refreshMarkers();
+      renderList();
+      flyTo(place);
+      setTimeout(()=>openPlace(place), 400);
+    }
+  });
+}
+
+function closeAddPlace(){
+  stopPicking();
+  closeModal();
+}
+
+function startPicking(){
+  // chiudi temporaneamente il modal e mostra la mappa per pickare
+  const overlay = document.getElementById("overlay");
+  if(overlay) overlay.style.display = "none";
+  document.getElementById("map").classList.add("picking");
+  if(pickerMarker){ pickerMarker.remove(); pickerMarker = null }
+  pickerHandler = (e)=>{
+    const {lng, lat} = e.lngLat;
+    pickedCoord = {lat, lon:lng};
+    if(pickerMarker) pickerMarker.remove();
+    const el = document.createElement("div");
+    el.className = "pickmarker";
+    pickerMarker = new maplibregl.Marker({element:el, anchor:"bottom"})
+      .setLngLat([lng, lat])
+      .addTo(map);
+    // riapri il modal e aggiorna
+    document.getElementById("map").classList.remove("picking");
+    map.off("click", pickerHandler);
+    pickerHandler = null;
+    if(overlay) overlay.style.display = "";
+    updateCoordDisplay();
+    // ricontrolla duplicati
+    const ev = new Event("input");
+    document.getElementById("ap-name")?.dispatchEvent(ev);
+  };
+  map.on("click", pickerHandler);
+  // ESC annulla
+  const escHandler = (e)=>{
+    if(e.key==="Escape"){
+      stopPicking();
+      if(overlay) overlay.style.display = "";
+      window.removeEventListener("keydown", escHandler);
+    }
+  };
+  window.addEventListener("keydown", escHandler);
+}
+
+function stopPicking(){
+  if(pickerHandler){ map.off("click", pickerHandler); pickerHandler = null }
+  document.getElementById("map").classList.remove("picking");
+}
+
+function updateCoordDisplay(){
+  const el = document.getElementById("ap-coord");
+  if(!el) return;
+  if(pickedCoord){
+    el.classList.remove("empty");
+    el.innerHTML = `
+      <span style="flex:1">📍 <b>${pickedCoord.lat.toFixed(5)}, ${pickedCoord.lon.toFixed(5)}</b></span>
+      <button class="pickbtn" onclick="startPicking()">Cambia</button>
+    `;
+  }else{
+    el.classList.add("empty");
+    el.innerHTML = `
+      <span style="flex:1">Nessuna posizione selezionata</span>
+      <button class="pickbtn" id="ap-pick" onclick="startPicking()">📍 Scegli sulla mappa</button>
+    `;
+  }
+}
+
+window.deleteCustomPlaceById = async (pid)=>{
+  const p = PLACES.find(x=>x.id===pid);
+  if(p) await deleteCustomPlace(p);
+};
+window.startPicking = startPicking;
+
+// ====== CLASSIFICA ======
+function showRanking(pastryFilter=null){
+  const cat = STATE.filter;
+  const scope = cat==="all" ? PLACES : PLACES.filter(p=>p.category===cat);
+
+  // se è specificata una pastina, classifica per quella pastina
+  // altrimenti classifica complessiva del locale
+  let ranked;
+  let title, subtitle;
+  if(pastryFilter){
+    const past = getPastry(pastryFilter);
+    ranked = scope.map(p=>{
+      const st = placeStats(p.id);
+      const pastryStat = st.byPastry?.[pastryFilter];
+      return {p, n: pastryStat?.n||0, avg: pastryStat?.avg||null};
+    }).filter(x=>x.n > 0).sort((a,b)=>b.avg - a.avg || b.n - a.n);
+    title = `Migliori ${past?.name || 'pastine'} di Padova`;
+    subtitle = `${past?.emoji||''} classifica dedicata · ${ranked.length} ${ranked.length===1?'locale':'locali'} con recensioni`;
+  }else{
+    ranked = scope.map(p=>{
+      const st = placeStats(p.id);
+      return {p, n:st.n, avg:st.avg};
+    }).filter(x=>x.n > 0).sort((a,b)=>b.avg - a.avg || b.n - a.n);
+    const scopeLabel = cat==="all" ? "tutte le categorie" : CAT_LABEL[cat].toLowerCase()+"i";
+    title = "Le migliori pastine di Padova";
+    subtitle = `Filtro: <b>${scopeLabel}</b> · classifica complessiva`;
+  }
+
+  // Selettore pastina
+  const pastryOptions = `
+    <option value="">⭐ Classifica complessiva del locale</option>
+    ${allPastries().map(past=>{
+      // mostra quante recensioni in totale per quella pastina
+      const totRev = STATE.allReviews.filter(r=>r.pastryKey===past.key).length;
+      return `<option value="${past.key}"${past.key===pastryFilter?' selected':''}${totRev===0?' disabled':''}>${past.emoji} ${escapeHtml(past.name)}${totRev?` (${totRev})`:' (nessuna recensione)'}</option>`;
+    }).join("")}
+  `;
+
+  const html = `
+    <div class="modal-head">
+      <button class="closex" onclick="closeModal()">×</button>
+      <div class="kicker">Classifica pastinòmetro</div>
+      <h2>${title}</h2>
+      <div class="meta">${subtitle}</div>
+    </div>
+    <div class="modal-body">
+      <div class="field" style="margin-bottom:18px">
+        <label>Classifica per</label>
+        <select id="rank-pastry-sel" class="pastry-select">${pastryOptions}</select>
+      </div>
+      ${ranked.length===0 ? `<div class="empty">Ancora nessuna recensione qui.<br/>Aggiungine una per iniziare la classifica.</div>` :
+        `<div class="podium">
+          ${ranked.map((x,i)=>`
+            <div class="rank-item" data-id="${x.p.id}">
+              <div class="rank-n ${i<3?'gold':''}">${i+1}</div>
+              <div class="rank-info">
+                <b>${escapeHtml(x.p.name)}</b>
+                <span>${CAT_ICON[x.p.category]} ${CAT_LABEL[x.p.category]}${x.p.address?' · '+escapeHtml(x.p.address):''}</span>
+              </div>
+              <div class="rank-score">${x.avg.toFixed(1)}<span>${x.n} ${x.n===1?'rec.':'recc.'}</span></div>
+            </div>
+          `).join("")}
+        </div>`}
+    </div>
+  `;
+  openModal(html);
+  document.getElementById("rank-pastry-sel")?.addEventListener("change", (e)=>{
+    showRanking(e.target.value || null);
+  });
+  document.querySelectorAll(".rank-item").forEach(el=>{
+    el.addEventListener("click",()=>{
+      const p = PLACES.find(x=>x.id===el.dataset.id);
+      if(p){ closeModal(); openPlace(p); flyTo(p) }
+    });
+  });
+}
+
+function showMyReviews(){
+  if(!STATE.currentUser){ showLogin(); return }
+  const mine = STATE.allReviews.filter(r=>r.userId===STATE.currentUser.id)
+                              .sort((a,b)=>b.ts-a.ts);
+  const html = `
+    <div class="modal-head">
+      <button class="closex" onclick="closeModal()">×</button>
+      <div class="kicker">Profilo di ${escapeHtml(STATE.currentUser.name)}</div>
+      <h2>Le mie recensioni</h2>
+      <div class="meta">${mine.length} recensioni pubblicate</div>
+    </div>
+    <div class="modal-body">
+      ${mine.length===0 ? `<div class="empty">Non hai ancora scritto recensioni.</div>` :
+        mine.map(r=>{
+          const p = PLACES.find(x=>x.id===r.placeId);
+          if(!p) return '';
+          const d = new Date(r.ts).toLocaleDateString("it-IT",{day:"numeric",month:"short"});
+          return `
+            <div class="review" style="cursor:pointer" onclick='(function(){closeModal();openPlace(${JSON.stringify(p).replace(/'/g,"&apos;")});flyTo(${JSON.stringify(p).replace(/'/g,"&apos;")})})()'>
+              <div class="review-head">
+                <div class="review-author">${escapeHtml(p.name)} <span class="review-date">· ${d}</span></div>
+                <div class="review-score">${r.score.toFixed(1)}</div>
+              </div>
+              ${r.text?`<div class="review-body">${escapeHtml(r.text).slice(0,180)}${r.text.length>180?'...':''}</div>`:''}
+            </div>
+          `;
+        }).join("")}
+    </div>
+  `;
+  openModal(html);
+}
+
+// ====== MODAL base ======
+function openModal(innerHtml){
+  closeModal();
+  const ov = document.createElement("div");
+  ov.className = "overlay";
+  ov.id = "overlay";
+  ov.innerHTML = `<div class="modal">${innerHtml}</div>`;
+  ov.addEventListener("click", (e)=>{ if(e.target===ov) closeModal() });
+  document.body.appendChild(ov);
+}
+function closeModal(){
+  const ov = document.getElementById("overlay");
+  if(ov) ov.remove();
+  STATE.selected = null;
+  renderList();
+}
+
+function toast(msg){
+  const t = document.createElement("div");
+  t.className = "toast"; t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(), 2300);
+}
+
+// ====== UTIL ======
+function escapeHtml(s){
+  if(s==null) return "";
+  return String(s).replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"})[c]);
+}
+function escapeAttr(s){ return escapeHtml(s) }
+
+async function compressImage(file, maxDim=800, quality=0.75){
+  return new Promise((resolve, reject)=>{
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = ()=>{
+      URL.revokeObjectURL(url);
+      let {width,height} = img;
+      if(width>height && width>maxDim){ height = height*maxDim/width; width = maxDim }
+      else if(height>maxDim){ width = width*maxDim/height; height = maxDim }
+      const cv = document.createElement("canvas");
+      cv.width = width; cv.height = height;
+      cv.getContext("2d").drawImage(img,0,0,width,height);
+      resolve(cv.toDataURL("image/jpeg", quality));
+    };
+    img.onerror = reject;
+    img.src = url;
+  });
+}
+
+// ====== EVENTI ======
+document.getElementById("q").addEventListener("input",(e)=>{
+  STATE.query = e.target.value;
+  renderList();
+  refreshMarkers();
+});
+document.querySelectorAll(".chip").forEach(c=>{
+  c.addEventListener("click",()=>{
+    document.querySelectorAll(".chip").forEach(x=>x.classList.remove("on"));
+    c.classList.add("on");
+    STATE.filter = c.dataset.cat;
+    renderList();
+    refreshMarkers();
+  });
+});
+document.getElementById("sort").addEventListener("change",(e)=>{
+  STATE.sort = e.target.value;
+  renderList();
+});
+document.getElementById("rank-btn").addEventListener("click", ()=>showRanking());
+document.getElementById("add-btn").addEventListener("click", showAddPlace);
+document.getElementById("pastry-filter").addEventListener("change",(e)=>{
+  STATE.pastryFilter = e.target.value || null;
+  document.querySelector(".pastry-filter-row").classList.toggle("active", !!STATE.pastryFilter);
+  renderList();
+  refreshMarkers();
+});
+window.addEventListener("keydown", (e)=>{ if(e.key==="Escape") closeModal() });
+
+function populatePastryFilter(){
+  const sel = document.getElementById("pastry-filter");
+  if(!sel) return;
+  const cur = sel.value;
+  sel.innerHTML = `<option value="">— qualsiasi pastina —</option>` +
+    allPastries().map(past=>{
+      // conta in quanti locali è marcata "yes" o ha recensioni
+      let n = 0;
+      for(const p of PLACES){
+        const a = getAvailability(p.id, past.key);
+        const has = (STATE.reviewsByPlace[p.id]||[]).some(r=>r.pastryKey===past.key);
+        if(a?.state==="yes" || has) n++;
+      }
+      return `<option value="${past.key}"${n===0?' disabled':''}>${past.emoji} ${escapeHtml(past.name)}${n?` (${n})`:''}</option>`;
+    }).join("");
+  sel.value = cur;
+}
+
+// ====== AVVIO ======
+(async function(){
+  await loadUser();
+  await loadCustomPlaces();
+  await loadCustomPastries();
+  await loadAvailability();
+  await loadReviews();
+  initMap();
+  renderList();
+  populatePastryFilter();
+})();
+</script>
+</body>
+</html>

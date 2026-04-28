@@ -1,0 +1,9 @@
+data/
+.env
+.env.local
+.claude/
+__pycache__/
+*.pyc
+.venv/
+.idea/
+.vscode/
