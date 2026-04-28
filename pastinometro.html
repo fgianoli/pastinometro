@@ -398,6 +398,106 @@
   .cat-pick[disabled]{opacity:.55;cursor:not-allowed}
   .cat-pick .ico{font-size:18px;line-height:1}
 
+  /* Bottone Manifesto nell'hero */
+  .manifesto-cta{
+    display:inline-flex;align-items:center;gap:6px;
+    margin-top:12px;padding:8px 14px;
+    background:var(--ink);color:var(--paper);
+    border:1px solid var(--ink);border-radius:3px;
+    font-family:'Fraunces',serif;font-style:italic;font-size:13px;font-weight:500;
+    letter-spacing:.02em;cursor:pointer;
+    transition:background .15s,color .15s;
+  }
+  .manifesto-cta:hover{background:var(--accent);border-color:var(--accent)}
+
+  /* Widget "le piu' votate" sopra la lista */
+  .top-strip{
+    padding:10px 26px 14px;
+    border-top:1px dashed var(--line);
+    border-bottom:1px solid var(--line);
+    background:linear-gradient(180deg, rgba(176,122,42,0.06), transparent);
+  }
+  .top-strip[hidden]{display:none}
+  .top-strip-head{
+    display:flex;align-items:baseline;justify-content:space-between;
+    margin-bottom:8px;
+  }
+  .top-strip-head .label{
+    font-family:'Fraunces',serif;font-style:italic;font-weight:600;
+    font-size:13px;color:var(--accent);letter-spacing:.02em;
+  }
+  .top-strip-head .all{
+    font-size:11px;color:var(--ink-soft);text-decoration:underline;
+    text-underline-offset:2px;background:none;border:none;cursor:pointer;font-family:inherit;
+  }
+  .top-strip-head .all:hover{color:var(--accent)}
+  .top-row{
+    display:flex;align-items:center;gap:10px;
+    padding:8px 0;border-bottom:1px dotted var(--line);
+    cursor:pointer;background:none;border-left:none;border-right:none;border-top:none;
+    text-align:left;width:100%;font-family:inherit;color:inherit;
+  }
+  .top-row:last-child{border-bottom:none}
+  .top-row:hover{color:var(--accent)}
+  .top-row .rank{
+    font-family:'Fraunces',serif;font-weight:800;font-size:18px;
+    color:var(--accent-2);min-width:22px;text-align:center;
+  }
+  .top-row .info{flex:1;min-width:0}
+  .top-row .nm{
+    font-family:'Fraunces',serif;font-weight:600;font-size:14px;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .top-row .meta{
+    font-size:11px;color:var(--ink-soft);
+    display:flex;gap:6px;align-items:center;margin-top:1px;
+  }
+  .top-row .score{
+    font-family:'Fraunces',serif;font-weight:600;color:var(--accent);
+    font-size:16px;min-width:34px;text-align:right;
+  }
+
+  /* Modale manifesto */
+  .manifesto-body{font-family:'Fraunces',serif;font-size:15.5px;line-height:1.6}
+  .manifesto-preamble{
+    font-style:italic;color:var(--ink-soft);
+    border-left:3px solid var(--accent-2);padding:6px 14px;margin:4px 0 18px;
+    background:rgba(176,122,42,0.06);
+  }
+  .manifesto-list{
+    list-style:none;counter-reset:art;padding:0;margin:0 0 18px;
+  }
+  .manifesto-list li{
+    counter-increment:art;
+    position:relative;padding:14px 0 14px 52px;
+    border-bottom:1px dashed var(--line);
+  }
+  .manifesto-list li:last-child{border-bottom:none}
+  .manifesto-list li::before{
+    content:"Art. " counter(art) ".";
+    position:absolute;left:0;top:14px;
+    font-family:'Fraunces',serif;font-style:italic;font-weight:600;
+    font-size:12px;color:var(--accent);letter-spacing:.04em;
+    width:46px;
+  }
+  .manifesto-list li b{font-weight:600}
+  .manifesto-list li i{font-style:italic;color:var(--ink-soft)}
+  .manifesto-coda{
+    font-style:italic;color:var(--ink-soft);
+    text-align:center;padding:18px 0;
+    border-top:1px solid var(--line);border-bottom:1px solid var(--line);
+    margin:18px 0;
+  }
+  .manifesto-sign{
+    text-align:right;font-style:italic;color:var(--accent);
+    margin:18px 0 0;font-size:14px;
+  }
+  @media (max-width:860px){
+    .manifesto-body{font-size:14.5px}
+    .manifesto-list li{padding-left:42px}
+    .manifesto-list li::before{width:36px;font-size:11px}
+  }
+
   /* Ranking tab */
   .rankbtn{
     padding:8px 14px;font-size:12px;letter-spacing:.12em;text-transform:uppercase;
@@ -794,6 +894,7 @@
       <div class="kicker">Guida alle pastine di riso · Padova</div>
       <h1 class="title">Il<br/>Pastin<em>òmetro</em></h1>
       <p class="sub">Censimento dei <b>forni, bar e pasticcerie</b> della città, con recensione critica delle pastine di riso. Dati geografici da OpenStreetMap.</p>
+      <button class="manifesto-cta" id="manifesto-btn">📜 Leggi il Manifesto</button>
     </div>
     <div class="userbar" id="userbar"></div>
     <div class="controls">
@@ -826,6 +927,7 @@
       </div>
       <button class="addbtn" id="add-btn">＋ Aggiungi un forno o pasticceria mancante</button>
     </div>
+    <div class="top-strip" id="topStrip" hidden></div>
     <div class="list" id="list"></div>
   </aside>
   <main id="map">
@@ -1136,6 +1238,7 @@ async function loadReviews(){
     STATE.reviewsByPlace[pid].sort((a,b)=>b.ts-a.ts);
   }
   if(typeof populatePastryFilter === "function") populatePastryFilter();
+  if(typeof renderTopStrip === "function") renderTopStrip();
 }
 async function saveReview(placeId, data){
   if(!STATE.currentUser){ showLogin(); return }
@@ -2218,6 +2321,91 @@ window.deleteCustomPlaceById = async (pid)=>{
 };
 window.startPicking = startPicking;
 
+// ====== MANIFESTO ======
+function showManifesto(){
+  const html = `
+    <div class="modal-head">
+      <button class="closex" onclick="closeModal()">×</button>
+      <div class="kicker">Statuto del Pastinòmetro</div>
+      <h2 style="font-size:30px;line-height:1.05">Il Manifesto</h2>
+      <div class="meta" style="font-style:italic;font-family:'Fraunces',serif">
+        Lega per la salvaguardia della pastina padovana<br/>
+        e l'argine alla deriva pasticcera tutta burro e cioccolato
+      </div>
+    </div>
+    <div class="modal-body manifesto-body">
+      <p class="manifesto-preamble">
+        Quando in vetrina compaiono più macaron che pastine di riso,
+        il padovano si guarda intorno smarrito. È per questo che esiste
+        questo censimento.
+      </p>
+      <ol class="manifesto-list">
+        <li><b>La pastina di riso è patrimonio.</b> Non si traduce in <i>"rice tartlet"</i>, non si reinventa con la quinoa, non si serve in coppetta col cucchiaino. È la pastina di riso. Punto.</li>
+        <li><b>La greca si fa a turbante</b> con le mani di chi ha vent'anni di vetrina. Non si stampa in centrale.</li>
+        <li><b>Una punta è un triangolo</b> con dentro qualcosa di buono. Se la chiamano <i>"tartelletta"</i> ringraziate e cambiate marciapiede.</li>
+        <li><b>Lo zaleto va col caffè.</b> Alle tre del pomeriggio. Sempre. Specialmente alle tre del pomeriggio.</li>
+        <li><b>Tre macaron in vetrina e nessuna pastina di riso?</b> Non è una pasticceria padovana. È un avamposto coloniale.</li>
+        <li><b>La pazientina è la nostra Sacher.</b> Difendetela come un confine.</li>
+        <li><b>La fugassa di Pasqua si compra anche a maggio</b>, e a giugno, e ad agosto. Chi ce l'ha in vetrina tutto l'anno è un alleato.</li>
+        <li><b>Il cannoncino alla crema costa due euro</b> e vi rende felici per la giornata. <b>L'éclair al pistacchio costa otto euro</b> e parla francese.</li>
+        <li><b>Crostata di marmellata della nonna</b> &gt; entremet glassato a specchio. <i>Sempre. Per sempre.</i></li>
+        <li><b>Recensire è dovere civico.</b> Una pastina anonima è una pastina dimenticata. Una pastina recensita vive in eterno.</li>
+      </ol>
+      <p class="manifesto-coda">
+        Ⅹ articoli, una città, un patrimonio. Le pasticcerie francesi
+        sono benvenute — a patto che abbiano almeno una pastina decente.
+        Tutto il resto è bonus.
+      </p>
+      <p class="manifesto-sign">
+        — Il Pastinòmetro,<br/>
+        <span style="font-size:11px;color:var(--ink-soft)">in sede a Padova, anno di grazia ${new Date().getFullYear()}</span>
+      </p>
+    </div>
+  `;
+  openModal(html);
+}
+
+// ====== TOP STRIP (le piu' votate) ======
+function topPlaces(limit=3, minReviews=2){
+  const arr = PLACES.map(p => ({p, st: placeStats(p.id)}))
+    .filter(x => x.st.n >= minReviews && x.st.avg !== null)
+    .sort((a,b) => b.st.avg - a.st.avg);
+  return arr.slice(0, limit);
+}
+function renderTopStrip(){
+  const el = document.getElementById("topStrip");
+  if(!el) return;
+  const top = topPlaces(3, 2);
+  if(top.length === 0){ el.hidden = true; return }
+  el.hidden = false;
+  const rows = top.map((x,i)=>{
+    const p = x.p, st = x.st;
+    return `
+      <button class="top-row" data-id="${escapeAttr(p.id)}">
+        <span class="rank">${i+1}</span>
+        <span class="info">
+          <span class="nm">${escapeHtml(p.name)}</span>
+          <span class="meta">${CAT_ICON[p.category]} ${CAT_LABEL[p.category]} · ${st.n} ${st.n===1?'rec.':'recc.'}</span>
+        </span>
+        <span class="score">${st.avg.toFixed(1)}</span>
+      </button>
+    `;
+  }).join("");
+  el.innerHTML = `
+    <div class="top-strip-head">
+      <span class="label">🏆 Le più votate finora</span>
+      <button class="all" onclick="showRanking()">classifica completa →</button>
+    </div>
+    ${rows}
+  `;
+  el.querySelectorAll(".top-row").forEach(b=>{
+    b.addEventListener("click",()=>{
+      const p = PLACES.find(x=>x.id===b.dataset.id);
+      if(p){ openPlace(p); flyTo(p) }
+    });
+  });
+}
+
 // ====== CLASSIFICA ======
 function showRanking(pastryFilter=null){
   const cat = STATE.filter;
@@ -2399,6 +2587,7 @@ document.getElementById("sort").addEventListener("change",(e)=>{
   renderList();
 });
 document.getElementById("rank-btn").addEventListener("click", ()=>showRanking());
+document.getElementById("manifesto-btn").addEventListener("click", showManifesto);
 document.getElementById("add-btn").addEventListener("click", showAddPlace);
 
 // ====== BOTTOM-SHEET MOBILE ======
