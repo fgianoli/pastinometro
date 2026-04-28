@@ -284,6 +284,37 @@ def me(request: Request):
     return {"user": _user_payload(user) if user else None}
 
 
+class ChangePasswordIn(BaseModel):
+    current_password: str = Field(..., min_length=1, max_length=200)
+    new_password: str = Field(..., min_length=6, max_length=200)
+
+
+@app.post("/api/auth/change-password")
+def change_password(payload: ChangePasswordIn, request: Request, response: Response):
+    user = _require_user(request)
+    conn = get_db()
+    try:
+        row = conn.execute(
+            "SELECT password_hash FROM users WHERE id = ?", (user["id"],)
+        ).fetchone()
+        if not row or not bcrypt.checkpw(
+            payload.current_password.encode(), row["password_hash"].encode()
+        ):
+            raise HTTPException(401, "password attuale errata")
+        new_hash = bcrypt.hashpw(payload.new_password.encode(), bcrypt.gensalt()).decode()
+        conn.execute("UPDATE users SET password_hash = ? WHERE id = ?", (new_hash, user["id"]))
+        # invalida tutte le altre sessioni (best practice di sicurezza),
+        # mantiene solo quella corrente
+        current_token = request.cookies.get(COOKIE_NAME)
+        conn.execute(
+            "DELETE FROM sessions WHERE user_id = ? AND token != ?",
+            (user["id"], current_token or ""),
+        )
+    finally:
+        conn.close()
+    return {"ok": True}
+
+
 # ---- KV endpoints ----
 
 class KvPut(BaseModel):

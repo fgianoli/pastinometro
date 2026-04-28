@@ -1019,6 +1019,7 @@ function renderUserbar(){
       <div class="avatar">${init}</div>
       <div class="who"><b>${escapeHtml(n)}${adminBadge}</b><span>profilo recensore</span></div>
       <button class="linkbtn" onclick="showMyReviews()">le mie recensioni</button>
+      <button class="linkbtn" onclick="showChangePassword()">cambia password</button>
       <button class="linkbtn" onclick="logout()">esci</button>
     `;
   }else{
@@ -1074,6 +1075,53 @@ async function doAuth(mode){
     ? await loginWithPassword(username.trim(), password)
     : await registerWithPassword(username.trim(), password, email.trim());
   if(ok) closeModal();
+}
+
+function showChangePassword(){
+  if(!STATE.currentUser){ showLogin(); return }
+  const html = `
+    <div class="login">
+      <div class="kicker">Sicurezza</div>
+      <h2 style="font-size:24px;margin:6px 0 6px">Cambia password</h2>
+      <p class="hint" style="margin-bottom:14px">Per confermare l'identita' inserisci la password attuale, poi quella nuova.</p>
+      <input id="cp-current"  type="password" placeholder="password attuale"   autocomplete="current-password" autofocus />
+      <input id="cp-new"      type="password" placeholder="nuova password"     autocomplete="new-password" />
+      <input id="cp-confirm"  type="password" placeholder="conferma nuova password" autocomplete="new-password" />
+      <button class="btn-submit" onclick="doChangePassword()">Aggiorna password</button>
+      <p class="hint">Min 6 caratteri. Cambiando password verranno chiusi tutti gli altri dispositivi loggati con questo account.</p>
+    </div>
+  `;
+  openModal(html);
+  setTimeout(()=>{
+    const c = document.getElementById("cp-current");
+    if(c) c.focus();
+    ["cp-current","cp-new","cp-confirm"].forEach(id=>{
+      const el = document.getElementById(id);
+      if(el) el.addEventListener("keydown", e=>{ if(e.key==="Enter") doChangePassword(); });
+    });
+  }, 50);
+}
+async function doChangePassword(){
+  const cur = (document.getElementById("cp-current")||{}).value || "";
+  const nw  = (document.getElementById("cp-new")||{}).value || "";
+  const cf  = (document.getElementById("cp-confirm")||{}).value || "";
+  if(!cur){ toast("Inserisci la password attuale"); return }
+  if(nw.length < 6){ toast("La nuova password deve avere almeno 6 caratteri"); return }
+  if(nw !== cf){ toast("Le due nuove password non coincidono"); return }
+  if(nw === cur){ toast("La nuova password e' uguale a quella attuale"); return }
+  const r = await _api("/api/auth/change-password", {
+    method:"POST",
+    body: JSON.stringify({current_password: cur, new_password: nw}),
+  });
+  if(!r.ok){
+    let msg = "Errore nel cambio password";
+    if(r.status === 401) msg = "Password attuale errata";
+    else { try{ const j = await r.json(); if(j.detail) msg = j.detail }catch(_){} }
+    toast(msg);
+    return;
+  }
+  toast("Password aggiornata");
+  closeModal();
 }
 
 // ====== RECENSIONI ======
