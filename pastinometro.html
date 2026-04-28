@@ -183,27 +183,31 @@
   }
   .popbtn:hover{background:var(--accent);color:var(--paper)}
 
-  /* Map markers */
-  .mk{
+  /* Map markers
+     IMPORTANTE: l'elemento .mk e' posizionato da MapLibre via transform.
+     Non aggiungere transition/transform su .mk: usare il wrapper interno .mk-body.
+  */
+  .mk{position:relative;cursor:pointer}
+  .mk .mk-body{
     width:22px;height:22px;border-radius:50%;
     display:grid;place-items:center;
     border:2px solid var(--paper);
     box-shadow:0 2px 6px rgba(42,30,20,0.35);
-    cursor:pointer;
     font-size:11px;
+    position:relative;
     transition:transform .15s;
   }
-  .mk:hover{transform:scale(1.25)}
-  .mk.bakery{background:#c38a3a}
-  .mk.pastry{background:#8b1e2e}
-  .mk.cafe{background:#5a4735}
-  .mk.bar{background:#2a5d4a}
-  .mk.rated{width:30px;height:30px;border-width:3px}
-  .mk.rated::after{
+  .mk:hover .mk-body{transform:scale(1.25)}
+  .mk.bakery .mk-body{background:#c38a3a}
+  .mk.pastry .mk-body{background:#8b1e2e}
+  .mk.cafe   .mk-body{background:#5a4735}
+  .mk.bar    .mk-body{background:#2a5d4a}
+  .mk.rated  .mk-body{width:30px;height:30px;border-width:3px}
+  .mk.rated  .mk-body::after{
     content:"";position:absolute;inset:-4px;border-radius:50%;
     border:1px solid currentColor;opacity:.4;pointer-events:none;
   }
-  .mk .badge{
+  .mk .mk-body .badge{
     position:absolute;bottom:-6px;right:-6px;
     background:var(--paper);color:var(--ink);
     font-family:'Fraunces',serif;font-weight:600;font-size:10px;
@@ -375,6 +379,21 @@
     background:var(--accent);color:var(--paper);padding:1px 6px;border-radius:2px;
     margin-left:6px;font-weight:600;vertical-align:middle;
   }
+  /* Picker categoria */
+  .cat-grid{
+    display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:6px 0 10px;
+  }
+  .cat-pick{
+    display:flex;align-items:center;gap:8px;
+    padding:10px 12px;border:1px solid var(--line);border-radius:4px;
+    background:var(--paper);text-align:left;cursor:pointer;
+    font-family:inherit;font-size:13px;color:var(--ink);
+    transition:border-color .12s, background .12s;
+  }
+  .cat-pick:hover:not([disabled]){border-color:var(--accent);background:var(--bg-2)}
+  .cat-pick.sel{border-color:var(--accent);background:var(--bg-2);color:var(--ink-soft)}
+  .cat-pick[disabled]{opacity:.55;cursor:not-allowed}
+  .cat-pick .ico{font-size:18px;line-height:1}
 
   /* Ranking tab */
   .rankbtn{
@@ -405,7 +424,9 @@
     pointer-events:none;
     animation:slideup .25s ease-out;
   }
-  .pickmarker{
+  /* Picker marker — anche qui l'esterno resta neutro, animazioni sull'interno */
+  .pickmarker{position:relative;pointer-events:none}
+  .pickmarker .pin{
     width:30px;height:30px;border-radius:50% 50% 50% 0;
     background:var(--accent);transform:rotate(-45deg);
     border:3px solid var(--paper);
@@ -419,10 +440,10 @@
   }
 
   /* Marker custom (user-added) */
-  .mk.custom{
+  .mk.custom .mk-body{
     background-image:linear-gradient(135deg, currentColor 50%, transparent 50%);
   }
-  .mk.custom::before{
+  .mk.custom .mk-body::before{
     content:"✱";position:absolute;top:-3px;right:-3px;
     color:var(--ink);background:var(--paper);
     width:12px;height:12px;border-radius:50%;
@@ -714,10 +735,8 @@ const DEFAULT_PASTRIES = [
   {key:"zaleto",       name:"Zaleto (zaeto)",    emoji:"🌽", desc:"biscotto rustico di farina gialla, uvetta e pinoli"},
   {key:"fugassa",      name:"Fugassa padovana",  emoji:"🍞", desc:"focaccia dolce lievitata, tradizione pasquale"},
   {key:"pazientina",   name:"Pazientina (fetta)",emoji:"🎂", desc:"strati di pasta bresciana, pan di Spagna padovano e zabaione"},
-  {key:"dolce_santo",  name:"Dolce del Santo",   emoji:"⛪", desc:"dolce dedicato a Sant'Antonio, varianti molteplici"},
   {key:"crostoli",     name:"Crostoli / galani", emoji:"🎭", desc:"sfoglia fritta carnevalesca (stagionale)"},
   {key:"frittella",    name:"Frittella veneziana", emoji:"🍩", desc:"frittella tonda con crema, zabaione o uvetta"},
-  {key:"pazientini",   name:"Pazientini",        emoji:"🍪", desc:"biscotti morbidi a base di mandorla"},
 ];
 
 // ====== STORAGE (backend KV via /api/kv) ======
@@ -794,6 +813,7 @@ const STATE = {
   allReviews: [],
   customPastries: [],  // pastine aggiunte dagli utenti
   availability: {},    // pid -> {pastryKey: {state:"yes"|"no"|"unknown", userId, userName, ts}}
+  categoryOverrides: {},// pid -> {category, userId, userName, ts}
 };
 
 // ====== UTENTE: login username + password (backend FastAPI) ======
@@ -1111,6 +1131,79 @@ async function loadCustomPlaces(){
   const customs = items.map(it=>it.value).filter(p => p && p.id);
   // rimuove eventuali precedenti custom da PLACES e li rimette
   PLACES = PLACES.filter(p => p.source === "osm").concat(customs);
+  applyCategoryOverrides();
+}
+
+// ====== OVERRIDE CATEGORIA ======
+// key: cat:<placeId>  valore: {placeId, category, userId, userName, ts}
+// Permette agli utenti di correggere la categoria di un POI (last-write-wins).
+async function loadCategoryOverrides(){
+  const items = await sscan("cat:", true);
+  const map = {};
+  for(const it of items){
+    const o = it.value;
+    if(o && o.placeId && o.category) map[o.placeId] = o;
+  }
+  STATE.categoryOverrides = map;
+  applyCategoryOverrides();
+}
+function applyCategoryOverrides(){
+  const ov = STATE.categoryOverrides || {};
+  for(const p of PLACES){
+    const o = ov[p.id];
+    if(o && CAT_LABEL[o.category]) p.category = o.category;
+  }
+}
+async function setCategoryOverride(placeId, newCategory){
+  if(!STATE.currentUser){ showLogin(); return false }
+  if(!CAT_LABEL[newCategory]){ toast("Categoria non valida"); return false }
+  const o = {
+    placeId, category: newCategory,
+    userId: STATE.currentUser.id, userName: STATE.currentUser.name,
+    ts: Date.now(),
+  };
+  const ok = await sset("cat:"+placeId, o, true);
+  if(!ok) return false;
+  STATE.categoryOverrides[placeId] = o;
+  applyCategoryOverrides();
+  refreshMarkers();
+  renderList();
+  if(STATE.selected && STATE.selected.id === placeId){
+    const updated = PLACES.find(x=>x.id===placeId);
+    if(updated) openPlace(updated);
+  }
+  toast("Categoria aggiornata");
+  return true;
+}
+function showChangeCategory(placeId){
+  if(!STATE.currentUser){ showLogin(); return }
+  const p = PLACES.find(x=>x.id===placeId);
+  if(!p) return;
+  const cats = ["bakery","pastry","cafe","bar"];
+  const ov = STATE.categoryOverrides[placeId];
+  const buttons = cats.map(c=>{
+    const sel = c === p.category;
+    return `<button class="cat-pick ${sel?'sel':''}" data-cat="${c}" ${sel?'disabled':''}>
+      <span class="ico">${CAT_ICON[c]}</span><span>${CAT_LABEL[c]}</span>
+    </button>`;
+  }).join("");
+  const html = `
+    <div class="login" style="max-width:360px">
+      <div class="kicker">Cambia categoria</div>
+      <h2 style="font-size:22px;margin:6px 0 8px">${escapeHtml(p.name)}</h2>
+      <p class="hint" style="margin-bottom:12px">Attualmente classificato come <b>${CAT_LABEL[p.category]}</b>.${ov ? ` Modificato da ${escapeHtml(ov.userName||'utente')}.` : ''}</p>
+      <div class="cat-grid">${buttons}</div>
+      <p class="hint">L'override e' visibile a tutti gli utenti.</p>
+    </div>
+  `;
+  openModal(html);
+  document.querySelectorAll(".cat-pick").forEach(b=>{
+    b.addEventListener("click", async ()=>{
+      const cat = b.dataset.cat;
+      const ok = await setCategoryOverride(placeId, cat);
+      if(ok) closeModal();
+    });
+  });
 }
 
 // distanza approssimata in metri (formula equirettangolare)
@@ -1296,10 +1389,14 @@ function refreshMarkers(){
     const rated = st.n>0;
     const isCustom = p.source === "user";
     el.className = "mk "+p.category+(rated?" rated":"")+(isCustom?" custom":"");
-    el.innerHTML = rated
+    // wrapper interno: tutti gli stili visivi e animazioni vivono qui,
+    // l'esterno resta neutro perche' MapLibre lo posiziona via transform.
+    const body = document.createElement("div");
+    body.className = "mk-body";
+    body.innerHTML = rated
       ? `<span style="color:#fff;font-size:9px">${CAT_ICON[p.category]}</span><span class="badge">${st.avg.toFixed(1)}</span>`
       : `<span style="color:#fff;font-size:9px">${CAT_ICON[p.category]}</span>`;
-    el.style.position = "relative";
+    el.appendChild(body);
     if(isCustom) el.title = `Aggiunto da ${p.addedBy?.name || "utente"}`;
     el.addEventListener("click",(e)=>{
       e.stopPropagation();
@@ -1411,7 +1508,7 @@ function openPlace(p, tab="recensioni"){
   const html = `
     <div class="modal-head">
       <button class="closex" onclick="closeModal()">×</button>
-      <div class="kicker">${CAT_ICON[p.category]} ${CAT_LABEL[p.category]}</div>
+      <div class="kicker">${CAT_ICON[p.category]} ${CAT_LABEL[p.category]}${STATE.currentUser ? ` <button class="linkbtn" style="font-size:11px;margin-left:6px" onclick="showChangeCategory('${p.id}')">modifica</button>` : ''}</div>
       <h2>${escapeHtml(p.name)}</h2>
       ${meta ? `<div class="meta">${meta}</div>` : ''}
       ${addedByLine}
@@ -1878,6 +1975,9 @@ function startPicking(){
     if(pickerMarker) pickerMarker.remove();
     const el = document.createElement("div");
     el.className = "pickmarker";
+    const pin = document.createElement("div");
+    pin.className = "pin";
+    el.appendChild(pin);
     pickerMarker = new maplibregl.Marker({element:el, anchor:"bottom"})
       .setLngLat([lng, lat])
       .addTo(map);
@@ -2142,6 +2242,7 @@ function populatePastryFilter(){
 (async function(){
   await loadUser();
   await loadCustomPlaces();
+  await loadCategoryOverrides();
   await loadCustomPastries();
   await loadAvailability();
   await loadReviews();
