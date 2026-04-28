@@ -5,6 +5,18 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
 <meta name="theme-color" content="#8b1e2e"/>
 <title>Il Pastinòmetro · Padova</title>
+<meta name="description" content="Guida critica alle pastine di riso e dolci tradizionali di Padova. Censimento collaborativo di forni, bar e pasticcerie."/>
+<link rel="manifest" href="/manifest.webmanifest"/>
+<link rel="icon" type="image/svg+xml" href="/static/icon.svg"/>
+<link rel="apple-touch-icon" href="/static/icon.svg"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-title" content="Pastinòmetro"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta property="og:title" content="Il Pastinòmetro"/>
+<meta property="og:description" content="Censimento e recensione delle pastine padovane"/>
+<meta property="og:type" content="website"/>
+<meta property="og:image" content="/static/icon.svg"/>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,800;1,9..144,400&family=Inter+Tight:wght@400;500;600&display=swap" rel="stylesheet">
@@ -263,6 +275,13 @@
     color:var(--ink-soft);
   }
   .closex:hover{background:var(--bg-2);color:var(--ink)}
+  .sharebtn{
+    position:absolute;top:14px;right:54px;
+    width:30px;height:30px;border-radius:50%;
+    display:grid;place-items:center;font-size:14px;
+    color:var(--ink-soft);background:none;border:none;cursor:pointer;
+  }
+  .sharebtn:hover{background:var(--bg-2);color:var(--accent)}
   .modal-body{padding:20px 28px}
 
   /* Score ring */
@@ -855,6 +874,11 @@
     .closex{
       top:max(10px,env(safe-area-inset-top));right:10px;
       width:42px;height:42px;font-size:24px;
+      background:var(--paper);border:1px solid var(--line);
+    }
+    .sharebtn{
+      top:max(10px,env(safe-area-inset-top));right:62px;
+      width:42px;height:42px;font-size:18px;
       background:var(--paper);border:1px solid var(--line);
     }
     .modal-body{padding:16px 18px;padding-bottom:max(16px,env(safe-area-inset-bottom))}
@@ -1703,6 +1727,7 @@ function flyTo(p){
 // ====== MODAL LUOGO ======
 function openPlace(p, tab="recensioni"){
   STATE.selected = p;
+  syncUrlForPlace(p.id);
   renderList();
   const st = placeStats(p.id);
   const revs = STATE.reviewsByPlace[p.id] || [];
@@ -1794,6 +1819,7 @@ function openPlace(p, tab="recensioni"){
   const html = `
     <div class="modal-head">
       <button class="closex" onclick="closeModal()">×</button>
+      <button class="sharebtn" title="Copia link al luogo" onclick="sharePlace('${p.id}')">🔗</button>
       <div class="kicker">${CAT_ICON[p.category]} ${CAT_LABEL[p.category]}${STATE.currentUser ? ` <button class="linkbtn" style="font-size:11px;margin-left:6px" onclick="showChangeCategory('${p.id}')">modifica</button>` : ''}</div>
       <h2>${escapeHtml(p.name)}</h2>
       ${meta ? `<div class="meta">${meta}</div>` : ''}
@@ -2517,7 +2543,7 @@ function showMyReviews(){
 
 // ====== MODAL base ======
 function openModal(innerHtml){
-  closeModal();
+  closeModal({skipHistory:true});
   const ov = document.createElement("div");
   ov.className = "overlay";
   ov.id = "overlay";
@@ -2526,12 +2552,66 @@ function openModal(innerHtml){
   document.body.appendChild(ov);
   document.body.classList.add("modal-open");
 }
-function closeModal(){
+function closeModal(opts={}){
   const ov = document.getElementById("overlay");
   if(ov) ov.remove();
+  const wasPlace = !!STATE.selected;
   STATE.selected = null;
   document.body.classList.remove("modal-open");
+  // Se chiudiamo un modale di luogo, rimuoviamo il param ?p= dall'URL
+  if(wasPlace && !opts.skipHistory){
+    const url = new URL(window.location.href);
+    if(url.searchParams.has("p")){
+      url.searchParams.delete("p");
+      history.replaceState(null, "", url.pathname + (url.search ? url.search : "") + url.hash);
+    }
+  }
   renderList();
+}
+
+// ====== URL ROUTING (?p=<placeId>) ======
+function syncUrlForPlace(placeId){
+  const url = new URL(window.location.href);
+  if(url.searchParams.get("p") === placeId) return;
+  url.searchParams.set("p", placeId);
+  history.pushState({placeId}, "", url.pathname + "?" + url.searchParams.toString() + url.hash);
+}
+function openPlaceFromUrl(){
+  const url = new URL(window.location.href);
+  const pid = url.searchParams.get("p");
+  if(!pid){
+    // se non c'e' p e c'e' un modale di luogo aperto, chiudilo
+    if(STATE.selected){ closeModal({skipHistory:true}); }
+    return;
+  }
+  const p = PLACES.find(x=>x.id===pid);
+  if(p){
+    openPlace(p);
+    if(map) flyTo(p);
+  }
+}
+window.addEventListener("popstate", openPlaceFromUrl);
+
+async function sharePlace(placeId){
+  const url = new URL(window.location.origin + window.location.pathname);
+  url.searchParams.set("p", placeId);
+  const link = url.toString();
+  const p = PLACES.find(x=>x.id===placeId);
+  const title = p ? `Il Pastinòmetro · ${p.name}` : "Il Pastinòmetro";
+  // usa Web Share API su mobile se disponibile
+  if(navigator.share){
+    try{
+      await navigator.share({title, url: link});
+      return;
+    }catch(_){ /* utente ha annullato, prosegui col copy */ }
+  }
+  try{
+    await navigator.clipboard.writeText(link);
+    toast("Link copiato negli appunti");
+  }catch(_){
+    // fallback: prompt
+    prompt("Copia il link:", link);
+  }
 }
 
 function toast(msg){
@@ -2638,6 +2718,9 @@ function populatePastryFilter(){
   initMap();
   renderList();
   populatePastryFilter();
+  // se l'URL contiene ?p=<id>, apri quel luogo (link condivisi)
+  // un piccolo timeout permette al map.on("load", refreshMarkers) di partire prima
+  setTimeout(openPlaceFromUrl, 50);
 })();
 </script>
 </body>

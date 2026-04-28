@@ -19,6 +19,7 @@ from typing import Optional
 import bcrypt
 from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 # ---- Config ----
@@ -441,9 +442,31 @@ def kv_scan(request: Request, prefix: str = Query(""), shared: bool = Query(True
 
 # ---- Static / health ----
 
+STATIC_DIR = BASE_DIR / "static"
+if STATIC_DIR.is_dir():
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+
 @app.get("/")
 def index():
     return FileResponse(HTML_PATH)
+
+
+@app.get("/manifest.webmanifest")
+def manifest():
+    """Serve manifest also at the root path so browsers find it without /static prefix."""
+    return FileResponse(
+        STATIC_DIR / "manifest.webmanifest",
+        media_type="application/manifest+json",
+    )
+
+
+@app.get("/apple-touch-icon.png")
+@app.get("/apple-touch-icon-precomposed.png")
+@app.get("/favicon.ico")
+def fallback_icon():
+    """Return the SVG icon for any common icon path browsers probe automatically."""
+    return FileResponse(STATIC_DIR / "icon.svg", media_type="image/svg+xml")
 
 
 @app.get("/healthz")

@@ -1,0 +1,27 @@
+{
+  "name": "Il Pastinòmetro",
+  "short_name": "Pastinòmetro",
+  "description": "Censimento e recensione critica delle pastine padovane",
+  "lang": "it",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#f3ede0",
+  "theme_color": "#8b1e2e",
+  "categories": ["food", "lifestyle", "navigation"],
+  "icons": [
+    {
+      "src": "/static/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/icon-maskable.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}
