@@ -4,8 +4,15 @@ services:
     image: pastinometro:latest
     container_name: pastinometro
     restart: unless-stopped
-    ports:
-      - "${PORT:-8000}:8000"
+    # In produzione le porte NON vengono esposte sull'host:
+    # Nginx Proxy Manager raggiunge il container via rete docker su pastinometro:8000.
+    # Per test locale (senza NPM), decommenta la sezione ports.
+    # ports:
+    #   - "${PORT:-8000}:8000"
+    expose:
+      - "8000"
+    networks:
+      - proxy
     volumes:
       - ./data:/data
     environment:
@@ -14,3 +21,8 @@ services:
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-gianoli.federico@gmail.com}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+
+networks:
+  proxy:
+    external: true
+    name: docker-stack_proxy
