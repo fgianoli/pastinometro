@@ -2,7 +2,8 @@
 <html lang="it">
 <head>
 <meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<meta name="theme-color" content="#8b1e2e"/>
 <title>Il Pastinòmetro · Padova</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -37,11 +38,11 @@
 
   /* Layout */
   #app{display:grid;grid-template-columns:420px 1fr;height:100vh;overflow:hidden}
-  @media (max-width:860px){
-    #app{grid-template-columns:1fr;grid-template-rows:auto 1fr}
-    #map{min-height:45vh}
-    #side{max-height:55vh}
-  }
+
+  /* Sheet handle: visibile solo su mobile */
+  .sheet-handle{display:none}
+  /* lock scroll del body quando il modale e' aperto */
+  body.modal-open{overflow:hidden}
 
   /* Sidebar */
   #side{
@@ -650,11 +651,143 @@
   .pastry-block-avg span{
     font-size:11px;color:var(--ink-soft);font-family:'Inter Tight';font-weight:400;
   }
+
+  /* ==========================================================
+     MOBILE PASS  (<=860px)
+     - Mappa primaria full-screen, lista in bottom-sheet
+     - Modale fullscreen, chip scrollabili, tap target >= 40px
+     ========================================================== */
+  @media (max-width:860px){
+    #app{display:block;height:100dvh}
+
+    /* mappa: full-screen sotto la sheet */
+    #map{
+      position:fixed;inset:0;height:100dvh;min-height:0;width:100%;
+      z-index:1;
+    }
+
+    /* sidebar -> bottom sheet */
+    #side{
+      position:fixed;left:0;right:0;bottom:0;top:auto;
+      height:88dvh;max-height:88dvh;
+      border-right:none;border-top:1px solid var(--line);
+      border-radius:16px 16px 0 0;
+      box-shadow:0 -10px 30px rgba(42,30,20,0.18);
+      transform:translateY(calc(100% - 168px));
+      transition:transform .28s cubic-bezier(.2,.7,.3,1);
+      z-index:10;
+      overflow:hidden;display:flex;flex-direction:column;
+    }
+    body.sheet-open #side{transform:translateY(0)}
+
+    /* handle */
+    .sheet-handle{
+      display:flex;justify-content:center;align-items:center;
+      width:100%;padding:10px 0 6px;
+      flex:none;background:transparent;border:none;cursor:pointer;
+      touch-action:none;-webkit-tap-highlight-color:transparent;
+    }
+    .sheet-grip{
+      width:46px;height:5px;border-radius:3px;background:var(--line);
+      transition:background .15s,width .15s;
+    }
+    body.sheet-open .sheet-grip{background:var(--accent-2);width:60px}
+
+    /* hero compatto */
+    .hero{padding:6px 18px 10px;flex:none}
+    .hero::before{display:none}
+    .kicker{font-size:10px;letter-spacing:.16em;margin-bottom:2px}
+    .title{font-size:24px;line-height:1;margin:0}
+    .title br{display:none}
+    .sub{display:none}                /* sottotitolo nascosto su mobile */
+    body.sheet-open .sub{display:block;font-size:12px;max-width:none;margin-top:6px}
+
+    /* userbar */
+    .userbar{padding:8px 18px;flex:none}
+    .avatar{width:34px;height:34px;font-size:15px}
+
+    /* controls */
+    .controls{padding:10px 18px;flex:none}
+    .search{padding:10px 16px}
+    .search input{font-size:16px;min-height:24px}
+    .search .ico{font-size:16px}
+
+    /* chip filtri orizzontali, scroll-snap */
+    .chips{
+      flex-wrap:nowrap;overflow-x:auto;
+      -webkit-overflow-scrolling:touch;
+      scroll-snap-type:x proximity;
+      margin:10px -18px 0;padding:2px 18px 6px;
+      scrollbar-width:none;
+    }
+    .chips::-webkit-scrollbar{display:none}
+    .chip{
+      flex:0 0 auto;scroll-snap-align:start;
+      min-height:38px;padding:8px 14px;font-size:13px;
+    }
+
+    .sortrow{padding:8px 0 0;gap:8px;flex-wrap:wrap}
+    .sortrow select{min-height:40px;font-size:14px;padding:8px 28px 8px 10px}
+    .rankbtn{min-height:40px;padding:10px 14px}
+    .pastry-filter-row{padding:10px 0 0;flex-wrap:wrap}
+    .pastry-filter-row select{min-height:40px;font-size:14px;flex:1;min-width:0}
+    .addbtn{min-height:42px;font-size:13px}
+
+    /* lista: scroll interno, fa il resto del bottom-sheet */
+    #list{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch}
+
+    /* tap target */
+    .linkbtn{min-height:36px;padding:6px 4px;font-size:13px;display:inline-flex;align-items:center}
+
+    /* MODALE: fullscreen */
+    .overlay{padding:0;align-items:stretch}
+    .modal{
+      max-width:100%;width:100%;max-height:100dvh;height:100dvh;
+      border-radius:0;border:none;
+      animation:slideup-mobile .28s cubic-bezier(.2,.7,.3,1);
+    }
+    @keyframes slideup-mobile{from{transform:translateY(100%)}to{transform:none}}
+    .modal-head{padding:18px 18px 12px;padding-top:max(18px,env(safe-area-inset-top))}
+    .modal-head h2{font-size:22px;line-height:1.1}
+    .modal-head .meta{font-size:12px}
+    .closex{
+      top:max(10px,env(safe-area-inset-top));right:10px;
+      width:42px;height:42px;font-size:24px;
+      background:var(--paper);border:1px solid var(--line);
+    }
+    .modal-body{padding:16px 18px;padding-bottom:max(16px,env(safe-area-inset-bottom))}
+
+    /* score ring un filo piu' compatto */
+    .score-wrap{gap:12px;margin-bottom:14px;padding-bottom:14px}
+    .score-ring{width:78px;height:78px}
+
+    /* slider voto: thumb piu' grande per il dito */
+    input[type=range]{height:40px}
+    input[type=range]::-webkit-slider-thumb{width:26px;height:26px}
+    input[type=range]::-moz-range-thumb{width:26px;height:26px}
+
+    /* form fields */
+    .field-row{grid-template-columns:1fr;gap:8px}
+    input,textarea,select{font-size:16px}  /* evita zoom iOS sul focus */
+    .btn-submit{min-height:46px;font-size:14px;padding:12px}
+
+    /* tabs auth */
+    .auth-tab{min-height:42px;padding:10px 12px}
+
+    /* in modalita' "scegli sulla mappa" la sheet si chiude */
+    body.picking #side{transform:translateY(calc(100% - 60px));pointer-events:none}
+    body.picking .sheet-handle{pointer-events:auto}
+
+    /* legenda piu' piccola, in alto a destra */
+    .legend{top:8px;right:8px;padding:8px 10px;font-size:11px;max-width:50vw}
+  }
+
 </style>
 </head>
 <body>
 <div id="app">
   <aside id="side">
+    <button class="sheet-handle" id="sheetHandle" aria-label="Apri/chiudi pannello"><span class="sheet-grip"></span></button>
     <div class="hero">
       <div class="kicker">Guida alle pastine di riso · Padova</div>
       <h1 class="title">Il<br/>Pastin<em>òmetro</em></h1>
@@ -1968,6 +2101,7 @@ function startPicking(){
   const overlay = document.getElementById("overlay");
   if(overlay) overlay.style.display = "none";
   document.getElementById("map").classList.add("picking");
+  document.body.classList.add("picking");
   if(pickerMarker){ pickerMarker.remove(); pickerMarker = null }
   pickerHandler = (e)=>{
     const {lng, lat} = e.lngLat;
@@ -1983,6 +2117,7 @@ function startPicking(){
       .addTo(map);
     // riapri il modal e aggiorna
     document.getElementById("map").classList.remove("picking");
+  document.body.classList.remove("picking");
     map.off("click", pickerHandler);
     pickerHandler = null;
     if(overlay) overlay.style.display = "";
@@ -2006,6 +2141,7 @@ function startPicking(){
 function stopPicking(){
   if(pickerHandler){ map.off("click", pickerHandler); pickerHandler = null }
   document.getElementById("map").classList.remove("picking");
+  document.body.classList.remove("picking");
 }
 
 function updateCoordDisplay(){
@@ -2150,11 +2286,13 @@ function openModal(innerHtml){
   ov.innerHTML = `<div class="modal">${innerHtml}</div>`;
   ov.addEventListener("click", (e)=>{ if(e.target===ov) closeModal() });
   document.body.appendChild(ov);
+  document.body.classList.add("modal-open");
 }
 function closeModal(){
   const ov = document.getElementById("overlay");
   if(ov) ov.remove();
   STATE.selected = null;
+  document.body.classList.remove("modal-open");
   renderList();
 }
 
@@ -2212,6 +2350,18 @@ document.getElementById("sort").addEventListener("change",(e)=>{
 });
 document.getElementById("rank-btn").addEventListener("click", ()=>showRanking());
 document.getElementById("add-btn").addEventListener("click", showAddPlace);
+
+// ====== BOTTOM-SHEET MOBILE ======
+// La sheet ha due stati: peek (collassata, mostra hero+handle) e open (espansa).
+// Il toggle e' il manico in cima. Su desktop la classe non ha effetto (CSS media query).
+(function setupSheet(){
+  const handle = document.getElementById("sheetHandle");
+  if(!handle) return;
+  function toggle(){ document.body.classList.toggle("sheet-open"); }
+  handle.addEventListener("click", toggle);
+  // se l'utente seleziona un risultato dalla lista, lascia la sheet com'e';
+  // se clicca un marker sulla mappa (aprendo il modale), il modale copre tutto.
+})();
 document.getElementById("pastry-filter").addEventListener("change",(e)=>{
   STATE.pastryFilter = e.target.value || null;
   document.querySelector(".pastry-filter-row").classList.toggle("active", !!STATE.pastryFilter);
