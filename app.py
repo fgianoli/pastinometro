@@ -8,6 +8,7 @@ Espone:
 
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 import secrets
@@ -17,7 +18,7 @@ from pathlib import Path
 from typing import Optional
 
 import bcrypt
-from fastapi import FastAPI, HTTPException, Query, Request, Response
+from fastapi import FastAPI, File, HTTPException, Query, Request, Response, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -40,6 +41,9 @@ ADMIN_PASSWORD_ENV = os.environ.get("ADMIN_PASSWORD") or None
 
 USERNAME_RE = re.compile(r"^[a-zA-Z0-9._-]{2,30}$")
 MAX_VALUE_BYTES = 6 * 1024 * 1024  # 6 MB per chiave (basta per recensioni con foto compresse)
+MAX_PHOTO_BYTES = 4 * 1024 * 1024  # 4 MB per foto (gia' compresse client-side)
+PHOTOS_DIR = DATA_DIR / "photos"
+PHOTOS_DIR.mkdir(parents=True, exist_ok=True)
 
 
 # ---- Rate limiter (in-memory sliding window, single-process) ----
@@ -524,11 +528,46 @@ def kv_scan(request: Request, prefix: str = Query(""), shared: bool = Query(True
     return {"items": [{"key": r["key"], "value": r["value"]} for r in rows]}
 
 
+# ---- Photos ----
+
+def _detect_image_ext(data: bytes) -> Optional[str]:
+    """Riconosce JPG/PNG/WebP dai magic bytes. Tornaa l'estensione (es. '.jpg')."""
+    if data.startswith(b"\xff\xd8\xff"):
+        return ".jpg"
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return ".png"
+    if len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return ".webp"
+    return None
+
+
+@app.post("/api/photos")
+async def upload_photo(request: Request, file: UploadFile = File(...)):
+    user = _require_user(request)
+    _check_rate(request, "photo", max_calls=30, period_sec=60)
+    contents = await file.read()
+    if not contents:
+        raise HTTPException(400, "file vuoto")
+    if len(contents) > MAX_PHOTO_BYTES:
+        raise HTTPException(413, f"foto troppo grande (max {MAX_PHOTO_BYTES // (1024*1024)} MB)")
+    ext = _detect_image_ext(contents)
+    if not ext:
+        raise HTTPException(400, "formato non supportato (JPG, PNG o WebP)")
+    h = hashlib.sha256(contents).hexdigest()[:32]
+    fname = f"{h}{ext}"
+    path = PHOTOS_DIR / fname
+    if not path.exists():
+        path.write_bytes(contents)
+    return {"url": f"/photos/{fname}", "size": len(contents)}
+
+
 # ---- Static / health ----
 
 STATIC_DIR = BASE_DIR / "static"
 if STATIC_DIR.is_dir():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+# foto caricate dagli utenti — dir gia' creata in alto
+app.mount("/photos", StaticFiles(directory=str(PHOTOS_DIR)), name="photos")
 
 
 @app.get("/")

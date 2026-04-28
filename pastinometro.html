@@ -345,6 +345,16 @@
     width:52px;height:52px;border-radius:3px;object-fit:cover;
     border:1px solid var(--line);
   }
+  .thumb-loading{
+    display:grid;place-items:center;
+    background:var(--bg-2);color:var(--ink-soft);
+    font-family:'Fraunces',serif;font-size:18px;
+    animation:loading-pulse 1.2s ease-in-out infinite;
+  }
+  @keyframes loading-pulse{
+    0%,100%{opacity:.5}
+    50%{opacity:1}
+  }
   .btn-submit{
     background:var(--accent);color:var(--paper);
     padding:10px 22px;border-radius:3px;font-size:14px;font-weight:500;
@@ -1096,6 +1106,33 @@ async function sscan(prefix, shared=false){
     return out;
   }catch(e){ return [] }
 }
+async function uploadPhoto(file){
+  // Usa la compressione client-side esistente per limitare il payload, poi
+  // upload come blob multipart. Il server salva su disco e restituisce un URL
+  // del tipo "/photos/<hash>.<ext>".
+  try{
+    const dataUrl = await compressImage(file, 1000, 0.78);
+    const blob = await (await fetch(dataUrl)).blob();
+    const fd = new FormData();
+    fd.append("file", blob, "photo.jpg");
+    const r = await fetch(API + "/api/photos", {method:"POST", credentials:"include", body: fd});
+    if(!r.ok){
+      if(r.status === 401){ toast("Sessione scaduta — accedi di nuovo"); showLogin(); }
+      else if(r.status === 413){ toast("Foto troppo grande"); }
+      else if(r.status === 400){ toast("Formato foto non supportato"); }
+      else if(r.status === 429){ toast("Troppe foto in poco tempo, riprova fra un attimo"); }
+      else{ toast("Errore upload foto"); }
+      return null;
+    }
+    const j = await r.json();
+    return j.url;  // es. "/photos/abc123.jpg"
+  }catch(e){
+    console.warn("uploadPhoto failed", e);
+    toast("Errore upload foto");
+    return null;
+  }
+}
+
 async function sdel(k, shared=false){
   try{
     const r = await _api(`/api/kv?key=${encodeURIComponent(k)}&shared=${shared}`, {method:"DELETE"});
@@ -2227,26 +2264,31 @@ function bindForm(p){
     bindSliders();
   });
 
-  // photo handling
+  // photo handling — upload sul server (filesystem), salva l'URL nel review
   const fileInput = document.getElementById("rev-photo");
   const previews = document.getElementById("photo-previews");
   fileInput?.addEventListener("change", async (e)=>{
-    for(const f of e.target.files){
-      try{
-        const data = await compressImage(f, 800, 0.75);
-        pendingPhotos.push(data);
-        const img = document.createElement("img");
-        img.src = data; img.className = "thumb";
-        img.title = "clicca per rimuovere";
-        img.addEventListener("click",()=>{
-          const idx = pendingPhotos.indexOf(data);
-          if(idx>=0) pendingPhotos.splice(idx,1);
-          img.remove();
-        });
-        previews.appendChild(img);
-      }catch(err){ console.warn(err); toast("Foto non caricata") }
-    }
+    const files = Array.from(e.target.files);
     fileInput.value = "";
+    for(const f of files){
+      // placeholder mentre carica
+      const ph = document.createElement("div");
+      ph.className = "thumb thumb-loading";
+      ph.textContent = "…";
+      previews.appendChild(ph);
+      const url = await uploadPhoto(f);
+      if(!url){ ph.remove(); continue; }
+      pendingPhotos.push(url);
+      const img = document.createElement("img");
+      img.src = url; img.className = "thumb";
+      img.title = "clicca per rimuovere";
+      img.addEventListener("click",()=>{
+        const idx = pendingPhotos.indexOf(url);
+        if(idx>=0) pendingPhotos.splice(idx,1);
+        img.remove();
+      });
+      ph.replaceWith(img);
+    }
   });
 
   // submit
