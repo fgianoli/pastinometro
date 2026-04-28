@@ -1058,6 +1058,14 @@ async function sscan(prefix, shared=false){
 async function sdel(k, shared=false){
   try{
     const r = await _api(`/api/kv?key=${encodeURIComponent(k)}&shared=${shared}`, {method:"DELETE"});
+    if(!r.ok){
+      if(r.status === 401){ toast("Sessione scaduta — accedi di nuovo"); showLogin(); }
+      else if(r.status === 403){
+        // tipico nel cascade: e' una risorsa di un altro utente che non possiamo toccare.
+        // non interrompiamo il flusso, segnaliamo solo in console.
+        console.warn("delete forbidden", k);
+      }
+    }
     return r.ok;
   }catch(e){ return false }
 }
@@ -1418,12 +1426,10 @@ async function setAvailability(placeId, pastryKey, state, opts={}){
     ts: Date.now(),
   };
   const key = `avail:${placeId}:${pastryKey}`;
-  if(state === "unknown"){
-    await sdel(key, true);
-  }else{
-    const ok = await sset(key, a, true);
-    if(!ok){ toast("Errore nel salvataggio"); return false }
-  }
+  // Anche per "unknown" facciamo PUT (non DELETE): cosi' altri utenti possono
+  // sovrascrivere lo stato anche se non sono i proprietari della chiave.
+  const ok = await sset(key, a, true);
+  if(!ok){ toast("Errore nel salvataggio"); return false }
   await loadAvailability();
   if(typeof populatePastryFilter === "function") populatePastryFilter();
   if(!opts.silent) toast("Segnalazione salvata");

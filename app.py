@@ -42,6 +42,37 @@ USERNAME_RE = re.compile(r"^[a-zA-Z0-9._-]{2,30}$")
 MAX_VALUE_BYTES = 6 * 1024 * 1024  # 6 MB per chiave (basta per recensioni con foto compresse)
 
 
+# ---- Rate limiter (in-memory sliding window, single-process) ----
+
+import threading
+from collections import defaultdict, deque
+
+_rl_lock = threading.Lock()
+_rl_buckets: "dict[str, deque[float]]" = defaultdict(deque)
+
+
+def _real_ip(request: Request) -> str:
+    xff = request.headers.get("x-forwarded-for", "")
+    if xff:
+        return xff.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def _check_rate(request: Request, scope: str, max_calls: int, period_sec: int) -> None:
+    ip = _real_ip(request)
+    key = f"{scope}:{ip}"
+    now = time.time()
+    with _rl_lock:
+        q = _rl_buckets[key]
+        # purge expired
+        cutoff = now - period_sec
+        while q and q[0] < cutoff:
+            q.popleft()
+        if len(q) >= max_calls:
+            raise HTTPException(429, "troppe richieste, riprova tra qualche secondo")
+        q.append(now)
+
+
 # ---- DB ----
 
 def get_db() -> sqlite3.Connection:
@@ -86,6 +117,10 @@ def init_db() -> None:
             );
             """
         )
+        # Migration: aggiunge owner_id a kv_shared se mancante (NULL = legacy/no-owner).
+        cols = [r["name"] for r in conn.execute("PRAGMA table_info(kv_shared)").fetchall()]
+        if "owner_id" not in cols:
+            conn.execute("ALTER TABLE kv_shared ADD COLUMN owner_id TEXT")
     finally:
         conn.close()
 
@@ -224,7 +259,8 @@ class LoginIn(BaseModel):
 
 
 @app.post("/api/auth/register")
-def register(payload: RegisterIn, response: Response):
+def register(payload: RegisterIn, request: Request, response: Response):
+    _check_rate(request, "register", max_calls=5, period_sec=3600)  # 5 / ora / IP
     username = payload.username.strip()
     if not USERNAME_RE.match(username):
         raise HTTPException(400, "username: 2-30 caratteri, solo lettere/numeri/._-")
@@ -249,7 +285,8 @@ def register(payload: RegisterIn, response: Response):
 
 
 @app.post("/api/auth/login")
-def login(payload: LoginIn, response: Response):
+def login(payload: LoginIn, request: Request, response: Response):
+    _check_rate(request, "login", max_calls=10, period_sec=60)  # 10 / minuto / IP
     conn = get_db()
     try:
         row = conn.execute(
@@ -292,6 +329,7 @@ class ChangePasswordIn(BaseModel):
 
 @app.post("/api/auth/change-password")
 def change_password(payload: ChangePasswordIn, request: Request, response: Response):
+    _check_rate(request, "change-pw", max_calls=10, period_sec=60)
     user = _require_user(request)
     conn = get_db()
     try:
@@ -359,10 +397,13 @@ def kv_put(payload: KvPut, request: Request, key: str = Query(...), shared: bool
     conn = get_db()
     try:
         if shared:
+            # ON CONFLICT non aggiorna owner_id: il primo writer rimane il proprietario.
+            # Per chiavi avail:* (multi-writer per design) altri utenti possono PUT
+            # nuovi valori, ma solo il primo writer (o admin) puo' DELETE.
             conn.execute(
-                "INSERT INTO kv_shared(key, value, updated_at) VALUES (?,?,?) "
+                "INSERT INTO kv_shared(key, value, owner_id, updated_at) VALUES (?,?,?,?) "
                 "ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at",
-                (key, payload.value, now),
+                (key, payload.value, user["id"], now),
             )
         else:
             conn.execute(
@@ -375,6 +416,41 @@ def kv_put(payload: KvPut, request: Request, key: str = Query(...), shared: bool
     return {"ok": True}
 
 
+def _can_delete_shared(user: dict, key: str, owner_id: Optional[str], conn: sqlite3.Connection) -> bool:
+    """Regole di autorizzazione per la DELETE su kv_shared.
+
+    1. admin: sempre.
+    2. owner_id NULL (chiavi pre-migration): chiunque loggato (legacy).
+    3. owner_id == utente: si'.
+    4. Cascade: il proprietario di un place puo' cancellare review:/avail: di quel place;
+       il proprietario di una pastry puo' cancellare avail:*:<pastryKey>.
+    """
+    if user["is_admin"]:
+        return True
+    if owner_id is None:
+        return True
+    if owner_id == user["id"]:
+        return True
+    parts = key.split(":")
+    # review:<placeId>:<reviewId>  o  avail:<placeId>:<pastryKey>
+    if (key.startswith("review:") or key.startswith("avail:")) and len(parts) >= 2:
+        place_id = parts[1]
+        row = conn.execute(
+            "SELECT owner_id FROM kv_shared WHERE key = ?", (f"place:{place_id}",)
+        ).fetchone()
+        if row and row["owner_id"] == user["id"]:
+            return True
+    # avail:<placeId>:<pastryKey> -> il proprietario della pastry custom puo' cascadere
+    if key.startswith("avail:") and len(parts) >= 3:
+        pastry_key = parts[2]
+        row = conn.execute(
+            "SELECT owner_id FROM kv_shared WHERE key = ?", (f"pastry:{pastry_key}",)
+        ).fetchone()
+        if row and row["owner_id"] == user["id"]:
+            return True
+    return False
+
+
 @app.delete("/api/kv")
 def kv_delete(request: Request, key: str = Query(...), shared: bool = Query(True)):
     _validate_key(key)
@@ -382,6 +458,14 @@ def kv_delete(request: Request, key: str = Query(...), shared: bool = Query(True
     conn = get_db()
     try:
         if shared:
+            row = conn.execute(
+                "SELECT owner_id FROM kv_shared WHERE key = ?", (key,)
+            ).fetchone()
+            if not row:
+                # delete idempotente: chiave inesistente -> ok
+                return {"ok": True}
+            if not _can_delete_shared(user, key, row["owner_id"], conn):
+                raise HTTPException(403, "solo l'autore o un admin possono cancellare questa risorsa")
             conn.execute("DELETE FROM kv_shared WHERE key = ?", (key,))
         else:
             conn.execute(
