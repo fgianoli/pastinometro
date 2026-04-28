@@ -417,6 +417,42 @@
   .cat-pick[disabled]{opacity:.55;cursor:not-allowed}
   .cat-pick .ico{font-size:18px;line-height:1}
 
+  /* Banner stato locale (chiuso/trasferito) */
+  .status-banner{
+    margin-top:10px;padding:8px 12px;border-radius:3px;font-size:13px;
+    background:rgba(139,30,46,0.08);
+    border:1px solid rgba(139,30,46,0.25);
+    color:var(--accent);
+  }
+  .status-banner.status-moved{
+    background:rgba(176,122,42,0.10);
+    border-color:rgba(176,122,42,0.30);
+    color:var(--gold);
+  }
+  .status-banner b{font-family:'Fraunces',serif;letter-spacing:.04em}
+  .status-banner .by{color:var(--ink-soft);font-style:italic}
+  .status-action{margin-top:6px;text-align:right}
+
+  /* Marker e item per locali chiusi/trasferiti */
+  .mk.status-closed .mk-body, .mk.status-moved .mk-body{
+    opacity:.45;filter:grayscale(.4);
+  }
+  .item.status-closed, .item.status-moved{
+    opacity:.55;
+  }
+  .item .closed-tag{
+    display:inline-block;font-size:10px;letter-spacing:.08em;text-transform:uppercase;
+    background:var(--accent);color:var(--paper);padding:1px 6px;border-radius:2px;
+    margin-left:6px;font-weight:600;
+  }
+  .item .moved-tag{background:var(--gold)}
+  .show-closed{
+    display:flex;align-items:center;gap:6px;
+    margin-top:8px;font-size:11px;color:var(--ink-soft);
+    cursor:pointer;user-select:none;
+  }
+  .show-closed input{margin:0}
+
   /* Bottone Manifesto nell'hero */
   .manifesto-cta{
     display:inline-flex;align-items:center;gap:6px;
@@ -949,6 +985,10 @@
           <option value="">— qualsiasi pastina —</option>
         </select>
       </div>
+      <label class="show-closed">
+        <input type="checkbox" id="show-closed"/>
+        <span>mostra anche locali chiusi/trasferiti</span>
+      </label>
       <button class="addbtn" id="add-btn">＋ Aggiungi un forno o pasticceria mancante</button>
     </div>
     <div class="top-strip" id="topStrip" hidden></div>
@@ -1083,6 +1123,8 @@ const STATE = {
   customPastries: [],  // pastine aggiunte dagli utenti
   availability: {},    // pid -> {pastryKey: {state:"yes"|"no"|"unknown", userId, userName, ts}}
   categoryOverrides: {},// pid -> {category, userId, userName, ts}
+  placeStatus: {},     // pid -> {status:"open"|"closed"|"moved", note, userId, userName, ts}
+  hideClosed: true,    // filtro: nasconde i locali chiusi/trasferiti
 };
 
 // ====== UTENTE: login username + password (backend FastAPI) ======
@@ -1491,6 +1533,91 @@ async function setCategoryOverride(placeId, newCategory){
   toast("Categoria aggiornata");
   return true;
 }
+// ====== STATO LUOGO (chiuso / trasferito) ======
+// key: status:<placeId>  valore: {placeId, status, note, userId, userName, ts}
+const VALID_STATUSES = {"open":"Attivo","closed":"Chiuso","moved":"Trasferito / spostato"};
+
+async function loadPlaceStatus(){
+  const items = await sscan("status:", true);
+  const map = {};
+  for(const it of items){
+    const s = it.value;
+    if(s && s.placeId && VALID_STATUSES[s.status]) map[s.placeId] = s;
+  }
+  STATE.placeStatus = map;
+  applyPlaceStatus();
+}
+function applyPlaceStatus(){
+  const ov = STATE.placeStatus || {};
+  for(const p of PLACES){
+    const s = ov[p.id];
+    p.status = s ? s.status : "open";
+    p.statusNote = s ? (s.note || "") : "";
+    p.statusBy = s ? {id:s.userId, name:s.userName, ts:s.ts} : null;
+  }
+}
+async function setPlaceStatus(placeId, status, note){
+  if(!STATE.currentUser){ showLogin(); return false }
+  if(!VALID_STATUSES[status]){ toast("Stato non valido"); return false }
+  if(status === "open"){
+    // ripristina lo stato attivo: cancella il record (o lo mette a open)
+    await sdel("status:"+placeId, true);
+    delete STATE.placeStatus[placeId];
+  }else{
+    const s = {
+      placeId, status, note: (note||"").trim(),
+      userId: STATE.currentUser.id, userName: STATE.currentUser.name,
+      ts: Date.now(),
+    };
+    const ok = await sset("status:"+placeId, s, true);
+    if(!ok) return false;
+    STATE.placeStatus[placeId] = s;
+  }
+  applyPlaceStatus();
+  refreshMarkers();
+  renderList();
+  if(STATE.selected && STATE.selected.id === placeId){
+    const updated = PLACES.find(x=>x.id===placeId);
+    if(updated) openPlace(updated);
+  }
+  toast(status === "open" ? "Riportato come attivo" : "Stato aggiornato");
+  return true;
+}
+function showChangeStatus(placeId){
+  if(!STATE.currentUser){ showLogin(); return }
+  const p = PLACES.find(x=>x.id===placeId);
+  if(!p) return;
+  const cur = p.status || "open";
+  const opts = Object.entries(VALID_STATUSES).map(([k,label])=>{
+    const sel = k === cur;
+    return `<button class="cat-pick ${sel?'sel':''}" data-status="${k}" ${sel?'disabled':''}>
+      <span class="ico">${k==='open'?'✅':k==='closed'?'🚫':'📦'}</span><span>${label}</span>
+    </button>`;
+  }).join("");
+  const lastNote = p.statusNote ? `(precedente: ${escapeHtml(p.statusNote)})` : "";
+  const html = `
+    <div class="login" style="max-width:400px">
+      <div class="kicker">Stato del locale</div>
+      <h2 style="font-size:22px;margin:6px 0 8px">${escapeHtml(p.name)}</h2>
+      <p class="hint" style="margin-bottom:12px">${p.statusBy ? `Modificato da ${escapeHtml(p.statusBy.name||'utente')}.` : "Lo stato e' visibile a tutti."} ${lastNote}</p>
+      <div class="cat-grid">${opts}</div>
+      <div class="field" style="margin-top:8px">
+        <label class="hint" for="status-note">Nota facoltativa (es. "trasferito in via X", "chiuso da gennaio")</label>
+        <input id="status-note" type="text" maxlength="120" placeholder="opzionale" value="${escapeAttr(p.statusNote||'')}"/>
+      </div>
+    </div>
+  `;
+  openModal(html);
+  document.querySelectorAll(".cat-pick").forEach(b=>{
+    b.addEventListener("click", async ()=>{
+      const status = b.dataset.status;
+      const note = (document.getElementById("status-note")||{}).value || "";
+      const ok = await setPlaceStatus(placeId, status, note);
+      if(ok) closeModal();
+    });
+  });
+}
+
 function showChangeCategory(placeId){
   if(!STATE.currentUser){ showLogin(); return }
   const p = PLACES.find(x=>x.id===placeId);
@@ -1603,6 +1730,7 @@ async function deleteCustomPlace(p){
 function filteredPlaces(){
   const q = STATE.query.toLowerCase().trim();
   let out = PLACES.filter(p=>{
+    if(STATE.hideClosed && p.status && p.status !== "open") return false;
     if(STATE.filter !== "all" && p.category !== STATE.filter) return false;
     if(STATE.pastryFilter){
       // mostra solo locali dove questa pastina è marcata "yes" o ha recensioni
@@ -1649,10 +1777,15 @@ function renderList(){
     const scoreHtml = st.avg!==null
       ? `<span class="score-num">${st.avg.toFixed(1)}</span><span class="score-n">· ${st.n} ${st.n===1?"recensione":"recensioni"}</span>`
       : `<span class="score-num none">nessuna recensione</span>`;
+    const statusCls = p.status && p.status !== "open" ? ` status-${p.status}` : "";
+    const statusTag = p.status === "closed"
+      ? `<span class="closed-tag">chiuso</span>`
+      : p.status === "moved"
+        ? `<span class="closed-tag moved-tag">trasferito</span>` : "";
     return `
-      <div class="item${STATE.selected?.id===p.id?' active':''}" data-id="${p.id}">
+      <div class="item${STATE.selected?.id===p.id?' active':''}${statusCls}" data-id="${p.id}">
         <div class="item-head">
-          <div class="item-name">${escapeHtml(p.name)}</div>
+          <div class="item-name">${escapeHtml(p.name)}${statusTag}</div>
           <div class="item-cat">${CAT_ICON[p.category]} ${CAT_LABEL[p.category]}</div>
         </div>
         ${p.address? `<div class="item-addr">${escapeHtml(p.address)}</div>` : ''}
@@ -1704,7 +1837,7 @@ function refreshMarkers(){
     const el = document.createElement("div");
     const rated = st.n>0;
     const isCustom = p.source === "user";
-    el.className = "mk "+p.category+(rated?" rated":"")+(isCustom?" custom":"");
+    el.className = "mk "+p.category+(rated?" rated":"")+(isCustom?" custom":"")+(p.status && p.status!=="open" ? " status-"+p.status : "");
     // wrapper interno: tutti gli stili visivi e animazioni vivono qui,
     // l'esterno resta neutro perche' MapLibre lo posiziona via transform.
     const body = document.createElement("div");
@@ -1830,6 +1963,18 @@ function openPlace(p, tab="recensioni"){
       <h2>${escapeHtml(p.name)}</h2>
       ${meta ? `<div class="meta">${meta}</div>` : ''}
       ${addedByLine}
+      ${(p.status && p.status !== 'open') ? `
+        <div class="status-banner status-${p.status}">
+          <b>${p.status === 'closed' ? '🚫 LOCALE CHIUSO' : '📦 LOCALE TRASFERITO'}</b>
+          ${p.statusNote ? `<span> · ${escapeHtml(p.statusNote)}</span>` : ''}
+          ${p.statusBy ? `<span class="by"> · segnalato da ${escapeHtml(p.statusBy.name||'utente')}</span>` : ''}
+        </div>
+      ` : ''}
+      ${STATE.currentUser ? `
+        <div class="status-action">
+          <button class="linkbtn" onclick="showChangeStatus('${p.id}')">${(p.status && p.status !== 'open') ? 'aggiorna stato' : 'marca come chiuso/trasferito'}</button>
+        </div>
+      ` : ''}
     </div>
     <div class="modal-body">
       ${scoreBlock}
@@ -2675,6 +2820,11 @@ document.getElementById("sort").addEventListener("change",(e)=>{
 document.getElementById("rank-btn").addEventListener("click", ()=>showRanking());
 document.getElementById("manifesto-btn").addEventListener("click", showManifesto);
 document.getElementById("add-btn").addEventListener("click", showAddPlace);
+document.getElementById("show-closed").addEventListener("change",(e)=>{
+  STATE.hideClosed = !e.target.checked;
+  renderList();
+  refreshMarkers();
+});
 
 // ====== BOTTOM-SHEET MOBILE ======
 // La sheet ha due stati: peek (collassata, mostra hero+handle) e open (espansa).
@@ -2718,6 +2868,7 @@ function populatePastryFilter(){
   await loadUser();
   await loadCustomPlaces();
   await loadCategoryOverrides();
+  await loadPlaceStatus();
   await loadCustomPastries();
   await loadAvailability();
   await loadReviews();
