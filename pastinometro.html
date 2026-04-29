@@ -1236,11 +1236,15 @@ function renderUserbar(){
     const n = STATE.currentUser.name;
     const init = n.slice(0,1).toUpperCase();
     const adminBadge = STATE.currentUser.isAdmin ? `<span class="admin-badge">admin</span>` : "";
+    const adminBtn = STATE.currentUser.isAdmin
+      ? `<button class="linkbtn" title="Rilancia la query Overpass e aggiorna il dataset OSM" onclick="adminReimportOsm()">🔄 OSM</button>`
+      : "";
     el.innerHTML = `
       <div class="avatar">${init}</div>
       <div class="who"><b>${escapeHtml(n)}${adminBadge}</b><span>profilo recensore</span></div>
       <button class="linkbtn" onclick="showMyReviews()">le mie recensioni</button>
       <button class="linkbtn" onclick="showChangePassword()">cambia password</button>
+      ${adminBtn}
       <button class="linkbtn" onclick="logout()">esci</button>
     `;
   }else{
@@ -1615,6 +1619,55 @@ function getAvailability(placeId, pastryKey){
 
 // ====== LUOGHI AGGIUNTI DAGLI UTENTI ======
 // key: place:<id>  valore: {id, name, lat, lon, category, address, phone, website, hours, addedBy:{id,name}, ts, source:"user"}
+// ====== OSM: caricamento dataset aggiornato dal server (se disponibile) ======
+// L'admin puo' rilanciare la query Overpass con adminReimportOsm(); il risultato
+// viene salvato in data/osm_places.json e servito da /api/osm-places.
+async function loadOsmFromServer(){
+  try{
+    const r = await _api("/api/osm-places");
+    if(!r.ok) return;
+    const j = await r.json();
+    if(!j.places || !j.places.length) return;  // nessun reimport mai fatto: usa l'embedded
+    PLACES = j.places.map(p => ({
+      id: p.id,
+      name: p.name,
+      lat: p.lat,
+      lon: p.lon,
+      category: p.category,
+      address: p.address || "",
+      phone: p.phone || "",
+      website: p.website || "",
+      hours: p.hours || "",
+      source: "osm",
+    }));
+  }catch(_){}
+}
+
+async function adminReimportOsm(){
+  if(!STATE.currentUser?.isAdmin){ toast("Solo per admin"); return }
+  if(!confirm("Rilancio la query Overpass per importare la lista aggiornata dei locali da OSM. Procedere?")) return;
+  toast("Importazione in corso (puo' richiedere fino a 90s)...");
+  const r = await _api("/api/admin/osm-reimport", {method:"POST", body: "{}"});
+  if(!r.ok){
+    let msg = "Errore nel reimport OSM";
+    try{ const j = await r.json(); if(j.detail) msg = j.detail; }catch(_){}
+    toast(msg);
+    return;
+  }
+  const j = await r.json();
+  toast(`OSM aggiornato: ${j.total} locali (${j.added} nuovi, ${j.removed} rimossi)`);
+  // ricarica i dati e ridisegna
+  await loadOsmFromServer();
+  await loadCustomPlaces();
+  await loadCategoryOverrides();
+  await loadPlaceStatus();
+  await loadAvailability();
+  await loadReviews();
+  refreshMarkers();
+  renderList();
+}
+window.adminReimportOsm = adminReimportOsm;
+
 async function loadCustomPlaces(){
   const items = await sscan("place:", true);
   const customs = items.map(it=>it.value).filter(p => p && p.id);
@@ -3038,6 +3091,7 @@ function populatePastryFilter(){
 (async function(){
   await loadUser();
   await loadEmailConfig();
+  await loadOsmFromServer();
   await loadCustomPlaces();
   await loadCategoryOverrides();
   await loadPlaceStatus();

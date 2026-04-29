@@ -9,11 +9,15 @@ Espone:
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import re
 import secrets
 import sqlite3
 import time
+import urllib.error
+import urllib.parse
+import urllib.request
 from pathlib import Path
 from typing import Optional
 
@@ -681,6 +685,149 @@ def kv_scan(request: Request, prefix: str = Query(""), shared: bool = Query(True
     finally:
         conn.close()
     return {"items": [{"key": r["key"], "value": r["value"]} for r in rows]}
+
+
+# ---- OSM re-import (admin only) ----
+
+OVERPASS_URL = os.environ.get("OVERPASS_URL", "https://overpass-api.de/api/interpreter")
+OSM_PLACES_FILE = DATA_DIR / "osm_places.json"
+
+OVERPASS_QUERY = """
+[out:json][timeout:60];
+area["name"="Padova"]["admin_level"="8"]->.searchArea;
+(
+  node["amenity"~"^(cafe|bar)$"](area.searchArea);
+  way["amenity"~"^(cafe|bar)$"](area.searchArea);
+  node["shop"~"^(bakery|pastry|confectionery)$"](area.searchArea);
+  way["shop"~"^(bakery|pastry|confectionery)$"](area.searchArea);
+);
+out center;
+""".strip()
+
+
+def _osm_element_to_place(el: dict) -> Optional[dict]:
+    tags = el.get("tags") or {}
+    name = (tags.get("name") or "").strip()
+    if not name:
+        return None
+    if "lat" in el and "lon" in el:
+        lat, lon = el.get("lat"), el.get("lon")
+    elif "center" in el:
+        c = el["center"]
+        lat, lon = c.get("lat"), c.get("lon")
+    else:
+        return None
+    if lat is None or lon is None:
+        return None
+    typ = el.get("type")
+    osm_id = el.get("id")
+    if typ == "node":
+        pid = f"n{osm_id}"
+    elif typ == "way":
+        pid = f"w{osm_id}"
+    elif typ == "relation":
+        pid = f"r{osm_id}"
+    else:
+        return None
+    shop = tags.get("shop")
+    amenity = tags.get("amenity")
+    if shop == "bakery":
+        cat = "bakery"
+    elif shop in ("pastry", "confectionery"):
+        cat = "pastry"
+    elif amenity == "cafe":
+        cat = "cafe"
+    elif amenity == "bar":
+        cat = "bar"
+    else:
+        return None
+    parts = []
+    if tags.get("addr:street"):
+        parts.append(str(tags["addr:street"]))
+    if tags.get("addr:housenumber"):
+        parts.append(str(tags["addr:housenumber"]))
+    address = " ".join(parts).strip()
+    return {
+        "id": pid,
+        "name": name,
+        "lat": round(float(lat), 6),
+        "lon": round(float(lon), 6),
+        "category": cat,
+        "address": address,
+        "phone": tags.get("contact:phone") or tags.get("phone") or "",
+        "website": tags.get("contact:website") or tags.get("website") or "",
+        "hours": tags.get("opening_hours") or "",
+    }
+
+
+def _load_osm_file() -> dict:
+    if not OSM_PLACES_FILE.is_file():
+        return {"places": [], "ts": None}
+    try:
+        return json.loads(OSM_PLACES_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return {"places": [], "ts": None}
+
+
+@app.post("/api/admin/osm-reimport")
+def osm_reimport(request: Request):
+    user = _require_user(request)
+    if not user["is_admin"]:
+        raise HTTPException(403, "solo l'admin puo' eseguire questa operazione")
+    _check_rate(request, "osm-reimport", max_calls=3, period_sec=600)
+    try:
+        body = urllib.parse.urlencode({"data": OVERPASS_QUERY}).encode("utf-8")
+        req = urllib.request.Request(
+            OVERPASS_URL,
+            data=body,
+            headers={
+                "User-Agent": "Pastinometro/1.0 (admin OSM reimport)",
+                "Content-Type": "application/x-www-form-urlencoded",
+            },
+        )
+        with urllib.request.urlopen(req, timeout=90) as resp:
+            raw = resp.read()
+        payload = json.loads(raw.decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        raise HTTPException(502, f"Overpass HTTP {e.code}: {e.reason}")
+    except urllib.error.URLError as e:
+        raise HTTPException(502, f"Overpass network error: {e.reason}")
+    except Exception as e:
+        raise HTTPException(502, f"errore Overpass: {e!r}")
+    elements = payload.get("elements") or []
+    new_places = [p for p in (_osm_element_to_place(el) for el in elements) if p]
+    if not new_places:
+        raise HTTPException(502, "Overpass ha risposto ma senza elementi utilizzabili")
+    # ordina per nome per file stabile (utile in caso di backup/diff)
+    new_places.sort(key=lambda p: (p["name"].lower(), p["id"]))
+    # diff con dataset precedente
+    old = _load_osm_file()
+    old_ids = {p["id"] for p in old.get("places", [])}
+    new_ids = {p["id"] for p in new_places}
+    added = new_ids - old_ids
+    removed = old_ids - new_ids
+    OSM_PLACES_FILE.write_text(
+        json.dumps(
+            {"places": new_places, "ts": int(time.time())},
+            ensure_ascii=False,
+            separators=(",", ":"),
+        ),
+        encoding="utf-8",
+    )
+    return {
+        "total": len(new_places),
+        "added": len(added),
+        "removed": len(removed),
+        "previous_total": len(old.get("places", [])),
+    }
+
+
+@app.get("/api/osm-places")
+def get_osm_places():
+    """Restituisce i luoghi OSM piu' recenti se l'admin ha mai fatto un reimport,
+    altrimenti {places: [], ts: null}. Il frontend in caso di lista vuota usa
+    i dati embeddati nell'HTML come fallback."""
+    return _load_osm_file()
 
 
 # ---- Photos ----
