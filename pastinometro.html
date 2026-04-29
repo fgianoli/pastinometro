@@ -1042,13 +1042,13 @@ const CRITERIA = [
 // Gli utenti possono aggiungerne altre custom (storage condiviso).
 const DEFAULT_PASTRIES = [
   {key:"pastina_riso", name:"Pastina di riso",   emoji:"🍚", desc:"sfoglia con ripieno di riso al latte e limone — la regina della merenda padovana"},
-  {key:"greca",        name:"Greca",             emoji:"🥐", desc:"pastina sfogliata a spirale con crema o cioccolato"},
+  {key:"greca",        name:"Greca",             emoji:"🟡", desc:"pasta di mandorle, zabaione denso e glassa di fondente giallo striato — l'architettura padovana"},
   {key:"punta",        name:"Punta",             emoji:"🔺", desc:"sfoglia triangolare farcita, classica delle vetrine venete"},
   {key:"zaleto",       name:"Zaleto (zaeto)",    emoji:"🌽", desc:"biscotto rustico di farina gialla, uvetta e pinoli"},
   {key:"fugassa",      name:"Fugassa padovana",  emoji:"🍞", desc:"focaccia dolce lievitata, tradizione pasquale"},
   {key:"pazientina",   name:"Pazientina (fetta)",emoji:"🎂", desc:"strati di pasta bresciana, pan di Spagna padovano e zabaione"},
   {key:"crostoli",     name:"Crostoli / galani", emoji:"🎭", desc:"sfoglia fritta carnevalesca (stagionale)"},
-  {key:"frittella",    name:"Frittella veneziana", emoji:"🍩", desc:"frittella tonda con crema, zabaione o uvetta"},
+  {key:"frittella",    name:"Frittella veneziana", emoji:"🍩", desc:"tonda, classicamente vuota con uvetta e pinoli, o ripiena di zabaione, crema pasticcera o chantilly"},
 ];
 
 // ====== STORAGE (backend KV via /api/kv) ======
@@ -2742,20 +2742,20 @@ function showManifesto(){
       </p>
       <ol class="manifesto-list">
         <li><b>La pastina di riso è patrimonio.</b> Non si traduce in <i>"rice tartlet"</i>, non si reinventa con la quinoa, non si serve in coppetta col cucchiaino. È la pastina di riso. Punto.</li>
-        <li><b>La greca si fa a turbante</b> con le mani di chi ha vent'anni di vetrina. Non si stampa in centrale.</li>
+        <li><b>La greca è un'architettura.</b> Pasta di mandorle alla base, zabaione denso al centro, glassa di fondente giallo striato sopra. Tre tecniche in un boccone — e se la glassa è opaca e lo zabaione si è seduto, qualcuno l'ha scongelata.</li>
         <li><b>Una punta è un triangolo</b> con dentro qualcosa di buono. Se la chiamano <i>"tartelletta"</i> ringraziate e cambiate marciapiede.</li>
         <li><b>Lo zaleto va col caffè.</b> Alle tre del pomeriggio. Sempre. Specialmente alle tre del pomeriggio.</li>
         <li><b>Tre macaron in vetrina e nessuna pastina di riso?</b> Non è una pasticceria padovana. È un avamposto coloniale.</li>
         <li><b>La pazientina è la nostra Sacher.</b> Difendetela come un confine.</li>
         <li><b>La fugassa di Pasqua si compra anche a maggio</b>, e a giugno, e ad agosto. Chi ce l'ha in vetrina tutto l'anno è un alleato.</li>
+        <li><b>La frittella è veneziana</b> o non è. <i>Vuota</i> con uvetta e pinoli, al limite ripiena di zabaione, o crema pasticcera, o chantilly. Frittelle alla nutella, al pistacchio, ai frutti di bosco, al matcha: deriva del cattivo gusto travestita da innovazione.</li>
         <li><b>Il cannoncino alla crema costa due euro</b> e vi rende felici per la giornata. <b>L'éclair al pistacchio costa otto euro</b> e parla francese.</li>
         <li><b>Crostata di marmellata della nonna</b> &gt; entremet glassato a specchio. <i>Sempre. Per sempre.</i></li>
         <li><b>Recensire è dovere civico.</b> Una pastina anonima è una pastina dimenticata. Una pastina recensita vive in eterno.</li>
       </ol>
       <p class="manifesto-coda">
-        Ⅹ articoli, una città, un patrimonio. Le pasticcerie francesi
-        sono benvenute — a patto che abbiano almeno una pastina decente.
-        Tutto il resto è bonus.
+        Una città, un patrimonio. Le pasticcerie francesi sono benvenute —
+        a patto che abbiano almeno una pastina decente. Tutto il resto è bonus.
       </p>
       <p class="manifesto-sign">
         — Il Pastinòmetro,<br/>

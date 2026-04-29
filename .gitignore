@@ -7,3 +7,6 @@ __pycache__/
 .venv/
 .idea/
 .vscode/
+
+# progetti vicini che possono finire qui per sbaglio
+flood_damage_calculator/
