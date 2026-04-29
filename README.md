@@ -114,7 +114,8 @@ restano. Solo l'immagine viene ricostruita.
 | `Dockerfile` | build immagine |
 | `docker-compose.yml` | servizio singolo |
 | `.env.example` | template config |
-| `data/` | volume persistente (DB SQLite + password admin) |
+| `static/` | manifest, icone PWA |
+| `data/` | volume persistente: DB SQLite, foto utenti, snapshot OSM, password admin |
 
 ---
 
@@ -123,10 +124,22 @@ restano. Solo l'immagine viene ricostruita.
 Tutte le rotte sotto `/api`. Cookie di sessione `psm_session` (httpOnly, SameSite=Lax).
 
 **Auth**
-- `POST /api/auth/register` `{username, password, email?}` → setta cookie
-- `POST /api/auth/login` `{username, password}` → setta cookie
+- `POST /api/auth/register` `{username, password, email?}` → setta cookie (rate limit: 5/h/IP)
+- `POST /api/auth/login` `{username, password}` → setta cookie (rate limit: 10/min/IP)
 - `POST /api/auth/logout`
 - `GET  /api/auth/me` → `{user: {id, username, email, isAdmin} | null}`
+- `POST /api/auth/change-password` `{current_password, new_password}` (richiede login)
+- `POST /api/auth/forgot` `{email}` → 200 sempre. Manda link via SMTP se configurato (5/10min/IP)
+- `POST /api/auth/reset` `{token, new_password}` → reset con token monouso (10/10min/IP)
+- `GET  /api/auth/email-config` → `{enabled: bool}` per il frontend
+
+**Foto**
+- `POST /api/photos` (multipart, 4 MB max, 30/min/IP) → `{url: "/photos/<sha256>.jpg"}`
+- `GET /photos/<file>` → file foto (servito da FastAPI StaticFiles)
+
+**Admin**
+- `POST /api/admin/osm-reimport` (admin) → rilancia Overpass, salva snapshot
+- `GET /api/osm-places` → snapshot OSM corrente (`{places: [...], ts}`)
 
 **KV** (replica `window.storage`)
 - `GET    /api/kv?key=…&shared=true|false` → `{value, updatedAt}` o 404
@@ -155,16 +168,37 @@ OpenAPI auto-generata su `/api/docs`.
 
 ---
 
+## SMTP / reset password
+
+Per abilitare il flusso "password dimenticata" via email, configura le
+variabili `SMTP_*` e `MAIL_FROM` nel `.env`. Il `.env.example` ha esempi
+per Gmail, Resend e SMTP di provider hosting.
+
+Se le variabili sono vuote, il link "password dimenticata?" non compare
+nel modale di login e l'endpoint `/api/auth/forgot` risponde 503.
+
+`BASE_URL` viene usato per costruire i link assoluti nelle email — se
+non lo imposti, viene usato l'host della richiesta (di solito OK dietro NPM).
+
+## Re-import OSM
+
+Quando vuoi aggiornare il dataset dei locali da OpenStreetMap (apertura
+nuovi locali, chiusure, correzioni), entra come admin e clicca **🔄 OSM**
+nella userbar. Il backend rilancia la query Overpass e salva uno snapshot
+JSON in `data/osm_places.json`. Il frontend al prossimo refresh prende
+quello invece dei dati embeddati nell'HTML.
+
+Override utente (categoria corretta, status chiuso/trasferito), recensioni
+e luoghi user-added **non vengono toccati** dal reimport.
+
 ## Limitazioni note (MVP)
 
-- Le foto sono base64 dentro la recensione (max 6 MB per recensione). Per
-  scalare oltre poche centinaia di recensioni con foto, sposta su object
-  storage (MinIO/S3) e tieni nel DB solo l'URL.
-- Nessuna autorizzazione fine sulle DELETE shared: il frontend mostra il
-  pulsante elimina solo all'autore, ma l'endpoint accetta da qualsiasi utente
-  loggato. Adatto a una community ristretta; da rinforzare per app pubblica.
-- Niente reset password / email magic-link: l'admin può rigenerare manualmente
-  un hash bcrypt dentro la tabella `users`.
+- Foto piu' vecchie del 2026-04-29 sono ancora come dataURL base64 dentro
+  i record review:* nel KV. Le nuove vanno su filesystem in `data/photos/`.
+  Entrambi i formati funzionano nelle recensioni; nessuna migration retroattiva.
+- DELETE su risorse shared: enforcement basato su `owner_id` (impostato al
+  primo PUT). Risorse antecedenti la migration hanno `owner_id = NULL` e
+  sono cancellabili da chiunque (legacy). Cascade per place/pastry owner.
 - SQLite va benissimo fino a qualche migliaio di utenti / decine di migliaia
   di recensioni. Oltre conviene migrare a Postgres (lo schema KV è
   trasferibile 1:1).
