@@ -1163,6 +1163,7 @@ const STATE = {
   categoryOverrides: {},// pid -> {category, userId, userName, ts}
   placeStatus: {},     // pid -> {status:"open"|"closed"|"moved", note, userId, userName, ts}
   hideClosed: true,    // filtro: nasconde i locali chiusi/trasferiti
+  emailResetEnabled: false,  // se il backend ha SMTP configurato
 };
 
 // ====== UTENTE: login username + password (backend FastAPI) ======
@@ -1222,6 +1223,12 @@ async function logout(){
   renderUserbar();
   toast("Sei uscito.");
 }
+async function loadEmailConfig(){
+  try{
+    const r = await _api("/api/auth/email-config");
+    if(r.ok){ const j = await r.json(); STATE.emailResetEnabled = !!j.enabled; }
+  }catch(_){}
+}
 
 function renderUserbar(){
   const el = document.getElementById("userbar");
@@ -1264,8 +1271,8 @@ function showLogin(mode){
       ${isLogin ? "" : `<input id="auth-email" type="email" placeholder="email (facoltativa)" autocomplete="email" />`}
       <button class="btn-submit" onclick="doAuth('${mode}')">${isLogin ? "Entra" : "Crea account"}</button>
       <p class="hint">${isLogin
-        ? "Non hai ancora un account? <a href=\"#\" onclick=\"event.preventDefault();showLogin('register')\">Creane uno</a>."
-        : "Hai già un account? <a href=\"#\" onclick=\"event.preventDefault();showLogin('login')\">Accedi</a>."}</p>
+        ? `Non hai ancora un account? <a href="#" onclick="event.preventDefault();showLogin('register')">Creane uno</a>.${STATE.emailResetEnabled ? ` &middot; <a href="#" onclick="event.preventDefault();showForgotPassword()">Password dimenticata?</a>` : ''}`
+        : `Hai già un account? <a href="#" onclick="event.preventDefault();showLogin('login')">Accedi</a>.`}</p>
     </div>
   `;
   openModal(html);
@@ -1336,6 +1343,86 @@ async function doChangePassword(){
   }
   toast("Password aggiornata");
   closeModal();
+}
+
+// ====== RESET PASSWORD VIA EMAIL ======
+function showForgotPassword(){
+  const html = `
+    <div class="login">
+      <div class="kicker">Recupero accesso</div>
+      <h2 style="font-size:24px;margin:6px 0 6px">Password dimenticata</h2>
+      <p class="hint" style="margin-bottom:14px">Inserisci la tua email: ti mandiamo un link per scegliere una nuova password (valido 30 minuti).</p>
+      <input id="fp-email" type="email" placeholder="email" autocomplete="email" autofocus />
+      <button class="btn-submit" onclick="doForgotPassword()">Invia link di reset</button>
+      <p class="hint">Il link arriva solo se l'email e' registrata su un account. Controlla anche lo spam.</p>
+    </div>
+  `;
+  openModal(html);
+  setTimeout(()=>{
+    const el = document.getElementById("fp-email");
+    if(el) el.addEventListener("keydown", e=>{ if(e.key==="Enter") doForgotPassword(); });
+  }, 50);
+}
+async function doForgotPassword(){
+  const email = (document.getElementById("fp-email")||{}).value || "";
+  if(!email.trim() || !email.includes("@")){ toast("Inserisci un'email valida"); return }
+  const r = await _api("/api/auth/forgot", {
+    method:"POST",
+    body: JSON.stringify({email: email.trim()}),
+  });
+  if(r.status === 503){ toast("Reset via email non configurato"); return }
+  if(r.status === 429){ toast("Troppi tentativi, riprova fra un po'"); return }
+  if(!r.ok){
+    let msg = "Errore nell'invio";
+    try{ const j = await r.json(); if(j.detail) msg = j.detail; }catch(_){}
+    toast(msg);
+    return;
+  }
+  toast("Se l'email e' registrata, abbiamo mandato un link");
+  closeModal();
+}
+
+function showResetPassword(token){
+  const html = `
+    <div class="login">
+      <div class="kicker">Reset password</div>
+      <h2 style="font-size:24px;margin:6px 0 6px">Scegli una nuova password</h2>
+      <p class="hint" style="margin-bottom:14px">Min 6 caratteri. Dopo il salvataggio dovrai accedere con la nuova password.</p>
+      <input id="rp-new"     type="password" placeholder="nuova password" autocomplete="new-password" autofocus />
+      <input id="rp-confirm" type="password" placeholder="conferma nuova password" autocomplete="new-password" />
+      <button class="btn-submit" onclick="doResetPassword('${token.replace(/'/g, "\\'")}')">Aggiorna password</button>
+    </div>
+  `;
+  openModal(html);
+  setTimeout(()=>{
+    ["rp-new","rp-confirm"].forEach(id=>{
+      const el = document.getElementById(id);
+      if(el) el.addEventListener("keydown", e=>{ if(e.key==="Enter") doResetPassword(token); });
+    });
+  }, 50);
+}
+async function doResetPassword(token){
+  const nw = (document.getElementById("rp-new")||{}).value || "";
+  const cf = (document.getElementById("rp-confirm")||{}).value || "";
+  if(nw.length < 6){ toast("La password deve avere almeno 6 caratteri"); return }
+  if(nw !== cf){ toast("Le due password non coincidono"); return }
+  const r = await _api("/api/auth/reset", {
+    method:"POST",
+    body: JSON.stringify({token, new_password: nw}),
+  });
+  if(!r.ok){
+    let msg = "Errore: token non valido o scaduto";
+    try{ const j = await r.json(); if(j.detail) msg = j.detail; }catch(_){}
+    toast(msg);
+    return;
+  }
+  // pulisci il param ?reset= dall'URL
+  const url = new URL(window.location.href);
+  url.searchParams.delete("reset");
+  history.replaceState(null, "", url.pathname + (url.search || "") + url.hash);
+  closeModal();
+  toast("Password aggiornata. Accedi con la nuova password.");
+  showLogin("login");
 }
 
 // ====== RECENSIONI ======
@@ -2950,6 +3037,7 @@ function populatePastryFilter(){
 // ====== AVVIO ======
 (async function(){
   await loadUser();
+  await loadEmailConfig();
   await loadCustomPlaces();
   await loadCategoryOverrides();
   await loadPlaceStatus();
@@ -2959,9 +3047,14 @@ function populatePastryFilter(){
   initMap();
   renderList();
   populatePastryFilter();
-  // se l'URL contiene ?p=<id>, apri quel luogo (link condivisi)
-  // un piccolo timeout permette al map.on("load", refreshMarkers) di partire prima
-  setTimeout(openPlaceFromUrl, 50);
+  // ?reset=<token> ha priorita': l'utente sta arrivando dal link email
+  const resetToken = new URL(window.location.href).searchParams.get("reset");
+  if(resetToken){
+    showResetPassword(resetToken);
+  }else{
+    // se l'URL contiene ?p=<id>, apri quel luogo (link condivisi)
+    setTimeout(openPlaceFromUrl, 50);
+  }
 })();
 </script>
 </body>

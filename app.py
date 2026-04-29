@@ -39,6 +39,17 @@ ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "gianoli.federico@gmail.com")
 ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "admin")
 ADMIN_PASSWORD_ENV = os.environ.get("ADMIN_PASSWORD") or None
 
+# ---- Email / reset password (SMTP configurabile) ----
+SMTP_HOST = os.environ.get("SMTP_HOST", "").strip() or None
+SMTP_PORT = int(os.environ.get("SMTP_PORT", "587") or 587)
+SMTP_USER = os.environ.get("SMTP_USER", "").strip() or None
+SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
+SMTP_USE_TLS = os.environ.get("SMTP_USE_TLS", "true").lower() == "true"
+SMTP_USE_SSL = os.environ.get("SMTP_USE_SSL", "false").lower() == "true"
+MAIL_FROM = os.environ.get("MAIL_FROM", "").strip() or None
+BASE_URL = os.environ.get("BASE_URL", "").rstrip("/") or None
+RESET_TOKEN_TTL = 30 * 60  # 30 minuti
+
 USERNAME_RE = re.compile(r"^[a-zA-Z0-9._-]{2,30}$")
 MAX_VALUE_BYTES = 6 * 1024 * 1024  # 6 MB per chiave (basta per recensioni con foto compresse)
 MAX_PHOTO_BYTES = 4 * 1024 * 1024  # 4 MB per foto (gia' compresse client-side)
@@ -125,6 +136,19 @@ def init_db() -> None:
         cols = [r["name"] for r in conn.execute("PRAGMA table_info(kv_shared)").fetchall()]
         if "owner_id" not in cols:
             conn.execute("ALTER TABLE kv_shared ADD COLUMN owner_id TEXT")
+        # Tabella per i token di reset password
+        conn.execute(
+            """CREATE TABLE IF NOT EXISTS password_resets (
+                token TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                created_at INTEGER NOT NULL,
+                expires_at INTEGER NOT NULL,
+                used INTEGER NOT NULL DEFAULT 0
+            )"""
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_password_resets_user ON password_resets(user_id)"
+        )
     finally:
         conn.close()
 
@@ -329,6 +353,137 @@ def me(request: Request):
 class ChangePasswordIn(BaseModel):
     current_password: str = Field(..., min_length=1, max_length=200)
     new_password: str = Field(..., min_length=6, max_length=200)
+
+
+class ForgotIn(BaseModel):
+    email: str = Field(..., min_length=3, max_length=200)
+
+
+class ResetIn(BaseModel):
+    token: str = Field(..., min_length=20, max_length=200)
+    new_password: str = Field(..., min_length=6, max_length=200)
+
+
+def _send_reset_email(to_email: str, username: str, link: str) -> None:
+    """Manda l'email di reset via SMTP. Solleva eccezioni se SMTP non configurato o invio fallisce."""
+    import smtplib
+    from email.message import EmailMessage
+
+    if not SMTP_HOST or not MAIL_FROM:
+        raise RuntimeError("SMTP non configurato: imposta SMTP_HOST e MAIL_FROM nel .env")
+
+    msg = EmailMessage()
+    msg["Subject"] = "Reset password — Il Pastinometro"
+    msg["From"] = MAIL_FROM
+    msg["To"] = to_email
+    body_text = (
+        f"Ciao {username},\n\n"
+        "hai chiesto di reimpostare la password del tuo account su Il Pastinometro.\n\n"
+        f"Apri questo link entro 30 minuti per scegliere una nuova password:\n{link}\n\n"
+        "Se non sei stato tu, ignora questa email — il tuo account resta com'e'.\n\n"
+        "— Il Pastinometro\n"
+        f"{BASE_URL or ''}\n"
+    )
+    msg.set_content(body_text)
+    body_html = (
+        '<!doctype html><html><body style="font-family:Georgia,serif;color:#2a1e14;'
+        'background:#f3ede0;padding:20px;margin:0">'
+        '<div style="max-width:520px;margin:auto;background:#faf4e6;border:1px solid #c9b896;'
+        'padding:24px;border-radius:4px">'
+        '<div style="font-style:italic;color:#8b1e2e;letter-spacing:.18em;text-transform:uppercase;'
+        'font-size:11px;margin-bottom:8px">Il Pastin&ograve;metro</div>'
+        f'<h2 style="margin:0 0 14px">Ciao {username},</h2>'
+        '<p>hai chiesto di reimpostare la password del tuo account.</p>'
+        f'<p style="margin:24px 0"><a href="{link}" '
+        'style="background:#8b1e2e;color:#faf4e6;padding:11px 22px;text-decoration:none;'
+        'border-radius:3px;display:inline-block;font-weight:600">Scegli una nuova password</a></p>'
+        '<p style="font-size:12px;color:#5a4735">Il link e&apos; valido per 30 minuti. '
+        'Se non sei stato tu, ignora questa email.</p>'
+        f'<p style="font-size:11px;color:#5a4735;margin-top:24px;border-top:1px dashed #c9b896;'
+        f'padding-top:12px">&mdash; Il Pastin&ograve;metro<br/>'
+        f'<a href="{BASE_URL or "#"}" style="color:#8b1e2e">{BASE_URL or ""}</a></p>'
+        '</div></body></html>'
+    )
+    msg.add_alternative(body_html, subtype="html")
+
+    if SMTP_USE_SSL:
+        with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, timeout=20) as s:
+            if SMTP_USER:
+                s.login(SMTP_USER, SMTP_PASSWORD)
+            s.send_message(msg)
+    else:
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=20) as s:
+            s.ehlo()
+            if SMTP_USE_TLS:
+                s.starttls()
+                s.ehlo()
+            if SMTP_USER:
+                s.login(SMTP_USER, SMTP_PASSWORD)
+            s.send_message(msg)
+
+
+@app.get("/api/auth/email-config")
+def email_config():
+    """Per il frontend: dice se il reset via email e' abilitato."""
+    return {"enabled": bool(SMTP_HOST and MAIL_FROM)}
+
+
+@app.post("/api/auth/forgot")
+def forgot_password(payload: ForgotIn, request: Request):
+    _check_rate(request, "forgot", max_calls=5, period_sec=600)
+    if not SMTP_HOST or not MAIL_FROM:
+        raise HTTPException(503, "il reset password via email non e' configurato")
+    email = payload.email.strip().lower()
+    if not email or "@" not in email:
+        return {"ok": True}  # 200 generico — non rivelare se l'email esiste
+    base_url = BASE_URL or str(request.base_url).rstrip("/")
+    conn = get_db()
+    try:
+        row = conn.execute(
+            "SELECT id, username, email FROM users WHERE LOWER(email) = ?", (email,)
+        ).fetchone()
+        if row:
+            token = secrets.token_urlsafe(32)
+            now = int(time.time())
+            conn.execute(
+                "INSERT INTO password_resets(token, user_id, created_at, expires_at)"
+                " VALUES (?,?,?,?)",
+                (token, row["id"], now, now + RESET_TOKEN_TTL),
+            )
+            link = f"{base_url}/?reset={token}"
+            try:
+                _send_reset_email(row["email"], row["username"], link)
+            except Exception as e:
+                # log dell'errore — non riveliamo dettagli al client
+                print(f"[forgot] errore invio email a {row['email']}: {e!r}", flush=True)
+                raise HTTPException(500, "errore nell'invio dell'email — contatta l'admin")
+    finally:
+        conn.close()
+    return {"ok": True}
+
+
+@app.post("/api/auth/reset")
+def reset_password(payload: ResetIn, request: Request, response: Response):
+    _check_rate(request, "reset", max_calls=10, period_sec=600)
+    conn = get_db()
+    try:
+        now = int(time.time())
+        row = conn.execute(
+            "SELECT user_id FROM password_resets"
+            " WHERE token = ? AND used = 0 AND expires_at > ?",
+            (payload.token, now),
+        ).fetchone()
+        if not row:
+            raise HTTPException(400, "token non valido o scaduto")
+        user_id = row["user_id"]
+        new_hash = bcrypt.hashpw(payload.new_password.encode(), bcrypt.gensalt()).decode()
+        conn.execute("UPDATE users SET password_hash = ? WHERE id = ?", (new_hash, user_id))
+        conn.execute("UPDATE password_resets SET used = 1 WHERE token = ?", (payload.token,))
+        # invalida tutte le sessioni dell'utente — rifara' login con la nuova password
+        conn.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
+    finally:
+        conn.close()
+    return {"ok": True}
 
 
 @app.post("/api/auth/change-password")
