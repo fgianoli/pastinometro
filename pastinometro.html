@@ -92,21 +92,34 @@
 
   /* User bar */
   .userbar{
-    display:flex;align-items:center;gap:10px;
+    display:flex;align-items:center;gap:10px;flex-wrap:wrap;
     padding:10px 26px;border-bottom:1px solid var(--line);
     background:var(--bg-2);
     font-size:13px;
+    row-gap:6px;
+  }
+  .userbar-main{
+    display:flex;align-items:center;gap:10px;
+    flex:1 1 auto;min-width:0;
+  }
+  .userbar-actions{
+    display:flex;align-items:center;flex-wrap:wrap;
+    gap:4px 12px;
+    flex:0 1 auto;
   }
   .avatar{
-    width:30px;height:30px;border-radius:50%;
+    width:30px;height:30px;border-radius:50%;flex:none;
     background:var(--accent);color:var(--paper);
     display:grid;place-items:center;font-family:'Fraunces',serif;font-weight:600;
     font-size:14px;
     box-shadow:var(--shadow);
   }
-  .userbar .who{flex:1;min-width:0}
-  .userbar .who b{display:block;font-family:'Fraunces',serif;font-size:15px}
-  .userbar .who span{color:var(--ink-soft);font-size:12px}
+  .userbar .who{flex:1 1 auto;min-width:0;overflow:hidden}
+  .userbar .who b{
+    display:block;font-family:'Fraunces',serif;font-size:15px;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .userbar .who span{color:var(--ink-soft);font-size:12px;display:block}
   .linkbtn{
     font-size:12px;color:var(--accent);text-decoration:underline;
     text-underline-offset:3px;text-decoration-color:var(--line);
@@ -1240,18 +1253,26 @@ function renderUserbar(){
       ? `<button class="linkbtn" title="Rilancia la query Overpass e aggiorna il dataset OSM" onclick="adminReimportOsm()">🔄 OSM</button>`
       : "";
     el.innerHTML = `
-      <div class="avatar">${init}</div>
-      <div class="who"><b>${escapeHtml(n)}${adminBadge}</b><span>profilo recensore</span></div>
-      <button class="linkbtn" onclick="showMyReviews()">le mie recensioni</button>
-      <button class="linkbtn" onclick="showChangePassword()">cambia password</button>
-      ${adminBtn}
-      <button class="linkbtn" onclick="logout()">esci</button>
+      <div class="userbar-main">
+        <div class="avatar">${init}</div>
+        <div class="who"><b>${escapeHtml(n)}${adminBadge}</b><span>profilo recensore</span></div>
+      </div>
+      <div class="userbar-actions">
+        <button class="linkbtn" onclick="showMyReviews()">le mie recensioni</button>
+        <button class="linkbtn" onclick="showChangePassword()">cambia password</button>
+        ${adminBtn}
+        <button class="linkbtn" onclick="logout()">esci</button>
+      </div>
     `;
   }else{
     el.innerHTML = `
-      <div class="avatar" style="background:var(--bg-2);color:var(--ink-soft)">?</div>
-      <div class="who"><b>Ospite</b><span>accedi per recensire</span></div>
-      <button class="linkbtn" onclick="showLogin()">entra</button>
+      <div class="userbar-main">
+        <div class="avatar" style="background:var(--bg-2);color:var(--ink-soft)">?</div>
+        <div class="who"><b>Ospite</b><span>accedi per recensire</span></div>
+      </div>
+      <div class="userbar-actions">
+        <button class="linkbtn" onclick="showLogin()">entra</button>
+      </div>
     `;
   }
 }
@@ -2006,6 +2027,7 @@ function initMap(){
     center:[11.8767, 45.4064],
     zoom:13.5,
     minZoom:11, maxZoom:19,
+    attributionControl: false,  // disabilita quello di default — ne aggiungiamo uno solo qui sotto
   });
   map.addControl(new maplibregl.NavigationControl({showCompass:false}),"bottom-right");
   map.addControl(new maplibregl.AttributionControl({compact:true}));
