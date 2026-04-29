@@ -861,18 +861,31 @@
     }
     body.sheet-open #side{transform:translateY(0)}
 
-    /* handle */
+    /* handle: tap target ampio + chevron visibile */
     .sheet-handle{
-      display:flex;justify-content:center;align-items:center;
-      width:100%;padding:10px 0 6px;
+      display:flex;flex-direction:column;justify-content:center;align-items:center;
+      width:100%;padding:14px 0 10px;gap:4px;
       flex:none;background:transparent;border:none;cursor:pointer;
       touch-action:none;-webkit-tap-highlight-color:transparent;
+      position:relative;
     }
     .sheet-grip{
       width:46px;height:5px;border-radius:3px;background:var(--line);
-      transition:background .15s,width .15s;
+      transition:background .15s,width .15s,transform .25s;
     }
     body.sheet-open .sheet-grip{background:var(--accent-2);width:60px}
+    .sheet-handle::after{
+      content:"trascina o tocca per aprire";
+      font-size:10px;letter-spacing:.12em;text-transform:uppercase;
+      color:var(--ink-soft);font-style:italic;font-family:'Fraunces',serif;
+      opacity:.85;transition:opacity .2s;
+    }
+    body.sheet-open .sheet-handle::after{
+      content:"trascina o tocca per chiudere";
+    }
+    /* hero in peek mode = tap target esteso che apre la sheet */
+    .hero{cursor:pointer;-webkit-tap-highlight-color:transparent}
+    body.sheet-open .hero{cursor:default}
 
     /* hero compatto */
     .hero{padding:6px 18px 10px;flex:none}
@@ -3073,15 +3086,107 @@ document.getElementById("show-closed").addEventListener("change",(e)=>{
 });
 
 // ====== BOTTOM-SHEET MOBILE ======
-// La sheet ha due stati: peek (collassata, mostra hero+handle) e open (espansa).
-// Il toggle e' il manico in cima. Su desktop la classe non ha effetto (CSS media query).
+// Due stati: peek (collassata, ~168px visibili) e open (espansa, 88dvh).
+// Tap sul manico o sull'hero per togglare. Drag verticale del manico per
+// ridimensionare con snap allo stato piu' vicino. Su desktop le regole CSS
+// sotto i 860px non si applicano e il drag non viene mai inizializzato
+// (perche' la sheet sta in display normale, non in transform).
 (function setupSheet(){
+  const sheet = document.getElementById("side");
   const handle = document.getElementById("sheetHandle");
-  if(!handle) return;
-  function toggle(){ document.body.classList.toggle("sheet-open"); }
-  handle.addEventListener("click", toggle);
-  // se l'utente seleziona un risultato dalla lista, lascia la sheet com'e';
-  // se clicca un marker sulla mappa (aprendo il modale), il modale copre tutto.
+  const hero = document.querySelector(".hero");
+  if(!sheet || !handle) return;
+
+  const PEEK_PX = 168;
+  let dragging = false;
+  let startY = 0;
+  let startTranslate = 0;       // px translateY al momento dello touchstart
+  let movedDistance = 0;
+  let sheetH = 0;
+  let suppressNextClick = false;
+
+  function isMobile(){ return window.matchMedia("(max-width:860px)").matches; }
+
+  function setOpen(open){
+    document.body.classList.toggle("sheet-open", !!open);
+    sheet.style.transform = "";  // libera l'inline, lascia la classe CSS gestire
+    sheet.style.transition = "";
+  }
+
+  function getY(e){
+    if(e.touches && e.touches.length) return e.touches[0].clientY;
+    if(e.changedTouches && e.changedTouches.length) return e.changedTouches[0].clientY;
+    return e.clientY;
+  }
+
+  function start(e){
+    if(!isMobile()) return;
+    sheetH = sheet.offsetHeight;
+    const isOpen = document.body.classList.contains("sheet-open");
+    startTranslate = isOpen ? 0 : Math.max(0, sheetH - PEEK_PX);
+    startY = getY(e);
+    movedDistance = 0;
+    dragging = true;
+    sheet.style.transition = "none";
+    // niente preventDefault qui: lasciamo il click partire per i tap brevi
+  }
+
+  function move(e){
+    if(!dragging) return;
+    const y = getY(e);
+    const dy = y - startY;
+    movedDistance = Math.abs(dy);
+    const next = Math.min(Math.max(0, sheetH - PEEK_PX), Math.max(0, startTranslate + dy));
+    sheet.style.transform = `translateY(${next}px)`;
+    if(movedDistance > 6) e.preventDefault();  // blocca scroll della pagina solo quando draggiamo davvero
+  }
+
+  function end(e){
+    if(!dragging) return;
+    dragging = false;
+    const wasOpen = document.body.classList.contains("sheet-open");
+    sheet.style.transition = "";
+    if(movedDistance < 8){
+      // tap: toggle
+      sheet.style.transform = "";
+      setOpen(!wasOpen);
+      // sopprimiamo il click "fantasma" che alcuni browser generano dopo il touchend
+      suppressNextClick = true;
+      setTimeout(()=>{ suppressNextClick = false; }, 350);
+      return;
+    }
+    // drag: snap allo stato piu' vicino
+    const range = Math.max(1, sheetH - PEEK_PX);
+    const y = getY(e);
+    const finalTranslate = Math.min(range, Math.max(0, startTranslate + (y - startY)));
+    const ratio = finalTranslate / range;  // 0=open, 1=peek
+    setOpen(ratio < 0.5);
+    suppressNextClick = true;
+    setTimeout(()=>{ suppressNextClick = false; }, 350);
+  }
+
+  // Drag sul manico
+  handle.addEventListener("touchstart", start, {passive:true});
+  handle.addEventListener("touchmove", move, {passive:false});
+  handle.addEventListener("touchend", end, {passive:true});
+  handle.addEventListener("touchcancel", end, {passive:true});
+
+  // Click come fallback (desktop e tap di accessibility tools)
+  handle.addEventListener("click", (e)=>{
+    if(suppressNextClick){ e.preventDefault(); e.stopPropagation(); return; }
+    if(isMobile()) setOpen(!document.body.classList.contains("sheet-open"));
+  });
+
+  // Tap sull'hero in modalita' peek apre la sheet (tap target esteso).
+  // I click sui bottoni dentro l'hero (es. "Leggi il Manifesto") hanno il loro
+  // handler e non devono aprire la sheet — verifichiamo il target.
+  if(hero){
+    hero.addEventListener("click", (e)=>{
+      if(!isMobile()) return;
+      if(e.target.closest("button,a")) return;
+      if(!document.body.classList.contains("sheet-open")) setOpen(true);
+    });
+  }
 })();
 document.getElementById("pastry-filter").addEventListener("change",(e)=>{
   STATE.pastryFilter = e.target.value || null;
