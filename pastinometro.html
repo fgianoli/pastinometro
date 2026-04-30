@@ -536,6 +536,27 @@
     font-size:16px;min-width:34px;text-align:right;
   }
 
+  /* Onboarding (primo accesso) */
+  .onboarding.modal-head{text-align:center;padding:32px 28px 16px;border-bottom:1px dashed var(--line)}
+  .onb-steps{list-style:none;padding:0;margin:8px 0 18px;display:flex;flex-direction:column;gap:14px}
+  .onb-steps li{
+    display:flex;gap:14px;align-items:flex-start;
+    padding:12px;background:var(--bg);border:1px solid var(--line);border-radius:4px;
+    line-height:1.5;
+  }
+  .onb-steps .num{
+    flex:none;width:30px;height:30px;border-radius:50%;
+    background:var(--accent);color:var(--paper);
+    display:grid;place-items:center;
+    font-family:'Fraunces',serif;font-weight:700;font-size:15px;
+  }
+  .onb-steps li b{font-weight:600;color:var(--ink)}
+  @media (max-width:860px){
+    .onboarding.modal-head{padding:max(28px,env(safe-area-inset-top)) 18px 14px}
+    .onboarding.modal-head h2{font-size:26px}
+    .onb-steps li{padding:10px;font-size:13.5px}
+  }
+
   /* Modale manifesto */
   .manifesto-body{font-family:'Fraunces',serif;font-size:15.5px;line-height:1.6}
   .manifesto-preamble{
@@ -2757,6 +2778,33 @@ window.deleteCustomPlaceById = async (pid)=>{
 };
 window.startPicking = startPicking;
 
+// ====== ONBOARDING (al primo accesso) ======
+function showOnboarding(){
+  const html = `
+    <div class="onboarding modal-head">
+      <div class="kicker">Benvenuto</div>
+      <h2 style="font-size:32px;margin:6px 0 4px">Il Pastinòmetro</h2>
+      <p class="meta" style="font-style:italic">La guida critica alle pastine padovane scritta dai padovani.</p>
+    </div>
+    <div class="onboarding modal-body">
+      <ul class="onb-steps">
+        <li><span class="num">1</span><div><b>Tocca un marker</b> sulla mappa o un nome nella lista per vedere chi offre cosa, leggere recensioni e segnalare disponibilità.</div></li>
+        <li><span class="num">2</span><div><b>Recensisci una pastina</b> con quattro criteri (ripieno, sfoglia, forma, rapporto Q/P) e foto opzionale. Si vota la pastina specifica, non il locale.</div></li>
+        <li><span class="num">3</span><div><b>Leggi il Manifesto</b> nell'hero. È la Costituzione di questa guida — undici articoli scritti per difendere la pastina padovana dalla deriva pasticcera tutta burro e cioccolato.</div></li>
+        <li><span class="num">4</span><div><b>Mancano locali?</b> Aggiungili tu (login + bottone "+ Aggiungi un forno o pasticceria mancante"). Le correzioni di categoria, la marcatura di chi ha chiuso, l'aggiunta di pastine alla lista — tutto sta agli utenti.</div></li>
+      </ul>
+      <button class="btn-submit" style="width:100%" onclick="dismissOnboarding()">Iniziamo</button>
+      <p class="hint" style="text-align:center;margin-top:10px">Non lo rivedrai più (a meno che pulisca i cookie).</p>
+    </div>
+  `;
+  openModal(html);
+}
+function dismissOnboarding(){
+  try{ localStorage.setItem("psm_onboarded", "1"); }catch(_){}
+  closeModal();
+}
+window.dismissOnboarding = dismissOnboarding;
+
 // ====== MANIFESTO ======
 function showManifesto(){
   const html = `
@@ -3229,12 +3277,19 @@ function populatePastryFilter(){
   renderList();
   populatePastryFilter();
   // ?reset=<token> ha priorita': l'utente sta arrivando dal link email
-  const resetToken = new URL(window.location.href).searchParams.get("reset");
+  const url = new URL(window.location.href);
+  const resetToken = url.searchParams.get("reset");
+  const urlPlaceId = url.searchParams.get("p");
   if(resetToken){
     showResetPassword(resetToken);
-  }else{
+  }else if(urlPlaceId){
     // se l'URL contiene ?p=<id>, apri quel luogo (link condivisi)
     setTimeout(openPlaceFromUrl, 50);
+  }else{
+    // primo accesso: mostra onboarding
+    let onboarded = false;
+    try{ onboarded = localStorage.getItem("psm_onboarded") === "1"; }catch(_){}
+    if(!onboarded) setTimeout(showOnboarding, 300);
   }
 })();
 </script>
