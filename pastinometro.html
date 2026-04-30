@@ -244,6 +244,45 @@
     box-shadow:0 1px 3px rgba(0,0,0,.3);
   }
 
+  /* Locate button (vicino a me) */
+  .locate-btn{
+    position:absolute;top:14px;left:14px;z-index:5;
+    width:42px;height:42px;border-radius:50%;
+    background:var(--paper);border:1px solid var(--line);
+    box-shadow:var(--shadow);
+    display:grid;place-items:center;font-size:18px;
+    cursor:pointer;transition:transform .15s,background .15s;
+  }
+  .locate-btn:hover{background:var(--bg-2)}
+  .locate-btn.active{background:var(--accent);color:var(--paper)}
+  .locate-btn.locating{animation:locate-pulse 1s ease-in-out infinite}
+  @keyframes locate-pulse{
+    0%,100%{transform:scale(1)}
+    50%{transform:scale(1.1)}
+  }
+
+  /* Marker posizione utente */
+  .user-marker-body{
+    width:18px;height:18px;border-radius:50%;
+    background:#1c7ed6;border:3px solid #fff;
+    box-shadow:0 0 0 4px rgba(28,126,214,0.20),0 2px 8px rgba(0,0,0,0.25);
+    position:relative;
+  }
+  .user-marker-body::after{
+    content:"";position:absolute;inset:-3px;border-radius:50%;
+    border:2px solid #1c7ed6;opacity:.45;
+    animation:user-marker-pulse 2s ease-out infinite;
+  }
+  @keyframes user-marker-pulse{
+    0%{transform:scale(1);opacity:.5}
+    100%{transform:scale(2.3);opacity:0}
+  }
+
+  .item-distance{
+    font-size:11px;color:var(--accent);font-weight:600;
+    margin-left:6px;letter-spacing:.02em;
+  }
+
   /* Floating legend */
   .legend{
     position:absolute;top:14px;right:14px;
@@ -1034,6 +1073,7 @@
           <option value="score">voto medio ↓</option>
           <option value="reviews">n. recensioni ↓</option>
           <option value="recent">recensione recente</option>
+          <option value="distance" id="sort-distance" disabled>distanza ↑ (richiede GPS)</option>
         </select>
         <button class="rankbtn" id="rank-btn">Classifica</button>
       </div>
@@ -1053,6 +1093,7 @@
     <div class="list" id="list"></div>
   </aside>
   <main id="map">
+    <button class="locate-btn" id="locate-btn" title="Trova locali vicino a me" aria-label="Trova locali vicino a me">📍</button>
     <div class="legend">
       <b>Categorie</b>
       <div class="row"><span class="sw" style="background:#8b1e2e"></span>Pasticceria</div>
@@ -1211,6 +1252,7 @@ const STATE = {
   placeStatus: {},     // pid -> {status:"open"|"closed"|"moved", note, userId, userName, ts}
   hideClosed: true,    // filtro: nasconde i locali chiusi/trasferiti
   emailResetEnabled: false,  // se il backend ha SMTP configurato
+  userLocation: null,  // {lat, lon, accuracy} dopo "vicino a me"
 };
 
 // ====== UTENTE: login username + password (backend FastAPI) ======
@@ -1983,7 +2025,11 @@ function filteredPlaces(){
     }
     return true;
   });
-  if(STATE.sort==="name") out.sort((a,b)=>a.name.localeCompare(b.name,"it"));
+  if(STATE.sort==="distance" && STATE.userLocation){
+    const {lat:ulat, lon:ulon} = STATE.userLocation;
+    out.sort((a,b)=>distMeters(ulat,ulon,a.lat,a.lon) - distMeters(ulat,ulon,b.lat,b.lon));
+  }
+  else if(STATE.sort==="name") out.sort((a,b)=>a.name.localeCompare(b.name,"it"));
   else if(STATE.sort==="score"){
     out.sort((a,b)=>{
       const sa = placeStats(a.id).avg, sb = placeStats(b.id).avg;
@@ -2021,10 +2067,13 @@ function renderList(){
       ? `<span class="closed-tag">chiuso</span>`
       : p.status === "moved"
         ? `<span class="closed-tag moved-tag">trasferito</span>` : "";
+    const distHtml = STATE.userLocation
+      ? `<span class="item-distance">${formatDistance(distMeters(STATE.userLocation.lat,STATE.userLocation.lon,p.lat,p.lon))}</span>`
+      : "";
     return `
       <div class="item${STATE.selected?.id===p.id?' active':''}${statusCls}" data-id="${p.id}">
         <div class="item-head">
-          <div class="item-name">${escapeHtml(p.name)}${statusTag}</div>
+          <div class="item-name">${escapeHtml(p.name)}${statusTag}${distHtml}</div>
           <div class="item-cat">${CAT_ICON[p.category]} ${CAT_LABEL[p.category]}</div>
         </div>
         ${p.address? `<div class="item-addr">${escapeHtml(p.address)}</div>` : ''}
@@ -2778,6 +2827,62 @@ window.deleteCustomPlaceById = async (pid)=>{
 };
 window.startPicking = startPicking;
 
+// ====== GEOLOCALIZZAZIONE "VICINO A ME" ======
+let userLocationMarker = null;
+
+function formatDistance(m){
+  if(m == null) return "";
+  if(m < 950) return Math.round(m) + " m";
+  return (m/1000).toFixed(m < 9500 ? 1 : 0) + " km";
+}
+
+function locateMe(){
+  const btn = document.getElementById("locate-btn");
+  if(!navigator.geolocation){ toast("Geolocalizzazione non supportata"); return }
+  if(btn) btn.classList.add("locating");
+  navigator.geolocation.getCurrentPosition(
+    (pos)=>{
+      if(btn){ btn.classList.remove("locating"); btn.classList.add("active"); }
+      const {latitude:lat, longitude:lon, accuracy} = pos.coords;
+      STATE.userLocation = {lat, lon, accuracy};
+      // marker sulla mappa
+      if(userLocationMarker){ userLocationMarker.remove(); userLocationMarker = null }
+      const el = document.createElement("div");
+      const body = document.createElement("div");
+      body.className = "user-marker-body";
+      el.appendChild(body);
+      userLocationMarker = new maplibregl.Marker({element:el, anchor:"center"})
+        .setLngLat([lon, lat])
+        .addTo(map);
+      // attiva l'opzione "distanza" nel sort, se chiusa
+      const sortDistOpt = document.getElementById("sort-distance");
+      if(sortDistOpt){
+        sortDistOpt.disabled = false;
+        sortDistOpt.textContent = "distanza ↑";
+      }
+      const sortSel = document.getElementById("sort");
+      if(sortSel && sortSel.value !== "distance"){
+        sortSel.value = "distance";
+        STATE.sort = "distance";
+      }
+      // centra la mappa
+      map.flyTo({center:[lon, lat], zoom:Math.max(map.getZoom(), 15.5), speed:1.4, essential:true});
+      renderList();
+      toast("Trovato! Locali ordinati per distanza");
+    },
+    (err)=>{
+      if(btn) btn.classList.remove("locating");
+      let msg = "Impossibile rilevare la posizione";
+      if(err.code === err.PERMISSION_DENIED) msg = "Permesso negato. Abilita la geolocalizzazione nel browser.";
+      else if(err.code === err.POSITION_UNAVAILABLE) msg = "Posizione non disponibile";
+      else if(err.code === err.TIMEOUT) msg = "Timeout: riprova";
+      toast(msg);
+    },
+    {enableHighAccuracy:true, timeout:15000, maximumAge:60000}
+  );
+}
+window.locateMe = locateMe;
+
 // ====== ONBOARDING (al primo accesso) ======
 function showOnboarding(){
   const html = `
@@ -3127,6 +3232,7 @@ document.getElementById("sort").addEventListener("change",(e)=>{
 document.getElementById("rank-btn").addEventListener("click", ()=>showRanking());
 document.getElementById("manifesto-btn").addEventListener("click", showManifesto);
 document.getElementById("add-btn").addEventListener("click", showAddPlace);
+document.getElementById("locate-btn").addEventListener("click", locateMe);
 document.getElementById("show-closed").addEventListener("change",(e)=>{
   STATE.hideClosed = !e.target.checked;
   renderList();
