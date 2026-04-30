@@ -798,6 +798,33 @@
     font-size:14px;font-family:inherit;
   }
 
+  /* Voto rapido (quickrate) — alternativa minimale al form completo */
+  .quickrate{
+    background:linear-gradient(180deg, rgba(195,138,58,0.10), rgba(176,122,42,0.04));
+    border:1px solid var(--line);border-radius:4px;
+    padding:14px 16px;margin-bottom:16px;
+  }
+  .qr-head{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+  .qr-emoji{font-size:22px}
+  .qr-title{display:flex;flex-direction:column;line-height:1.15}
+  .qr-title b{font-family:'Fraunces',serif;font-size:15px;color:var(--accent)}
+  .qr-title .qr-sub{font-size:11px;color:var(--ink-soft);font-style:italic}
+  .qr-row{display:grid;grid-template-columns:1fr 1.4fr auto;gap:10px;align-items:center}
+  .qr-slider-wrap{display:flex;align-items:center;gap:10px}
+  .qr-slider-wrap .slider{flex:1}
+  .qr-val{
+    font-family:'Fraunces',serif;font-weight:700;font-size:18px;
+    color:var(--accent);min-width:34px;text-align:right;
+  }
+  .qr-submit{
+    margin:0;padding:9px 14px;font-size:13px;letter-spacing:.04em;
+  }
+  @media (max-width:520px){
+    .qr-row{grid-template-columns:1fr;gap:8px}
+    .qr-slider-wrap{order:1}
+    .qr-submit{order:2;width:100%}
+  }
+
   /* === MATRICE DISPONIBILITÀ === */
   .avail-grid{
     background:var(--bg);border:1px solid var(--line);border-radius:3px;
@@ -2441,9 +2468,33 @@ function renderForm(p){
     `;
   }).join("");
 
+  // Quick-rate (voto rapido) — prima del form completo
+  const quickPastryOptions = pastriesForSelect.map(past=>{
+    const reviewed = reviewedKeys.has(past.key);
+    return `<option value="${past.key}"${past.key===initialKey?' selected':''}>${past.emoji} ${escapeHtml(past.name)}${reviewed?' (aggiornare)':''}</option>`;
+  }).join("");
+  const quickInitialScore = mineNow ? mineNow.score : 7;
+  const quickHtml = `
+    <div class="quickrate" id="quickrate">
+      <div class="qr-head">
+        <span class="qr-emoji">💨</span>
+        <span class="qr-title"><b>Voto rapido</b><span class="qr-sub">una pastina, un numero, salva</span></span>
+      </div>
+      <div class="qr-row">
+        <select id="qr-pastry" class="pastry-select">${quickPastryOptions}</select>
+        <div class="qr-slider-wrap">
+          <input class="slider" type="range" min="0" max="10" step="0.5" value="${quickInitialScore}" id="qr-slider"/>
+          <span class="qr-val" id="qr-val">${quickInitialScore.toFixed(1)}</span>
+        </div>
+        <button class="btn-submit qr-submit" id="qr-submit" type="button">💨 salva</button>
+      </div>
+    </div>
+  `;
+
   return `
+    ${quickHtml}
     <div class="formbox" id="formbox">
-      <h3>Recensisci una pastina</h3>
+      <h3>Recensione dettagliata <span style="font-weight:400;font-style:italic;color:var(--ink-soft);font-size:13px">— se vuoi essere preciso</span></h3>
       <div class="field">
         <label>Quale pastina stai recensendo?</label>
         <select id="rev-pastry" class="pastry-select">${pastryOptions}</select>
@@ -2466,6 +2517,42 @@ function renderForm(p){
 let pendingPhotos = [];
 function bindForm(p){
   pendingPhotos = [];
+
+  // ===== QUICK RATE =====
+  const qr = document.getElementById("quickrate");
+  if(qr){
+    const qSlider = document.getElementById("qr-slider");
+    const qVal = document.getElementById("qr-val");
+    const qSel = document.getElementById("qr-pastry");
+    const qSubmit = document.getElementById("qr-submit");
+    qSlider?.addEventListener("input", ()=>{ qVal.textContent = parseFloat(qSlider.value).toFixed(1); });
+    // sincronizza valore con eventuale recensione esistente quando cambia pastina
+    qSel?.addEventListener("change", ()=>{
+      if(!STATE.currentUser) return;
+      const myRevs = (STATE.reviewsByPlace[p.id] || []).filter(r=>r.userId===STATE.currentUser.id);
+      const mine = myRevs.find(r=>r.pastryKey===qSel.value);
+      const v = mine ? mine.score : 7;
+      qSlider.value = v;
+      qVal.textContent = v.toFixed(1);
+    });
+    qSubmit?.addEventListener("click", async ()=>{
+      if(!STATE.currentUser){ showLogin(); return }
+      const pastryKey = qSel.value;
+      if(!pastryKey){ toast("Scegli una pastina"); return }
+      const score = parseFloat(qSlider.value);
+      // tutti i 4 criteri ricevono il voto unico, cosi' la media e' coerente.
+      // L'utente puo' poi aggiungere dettagli con il form completo.
+      const crits = {};
+      CRITERIA.forEach(c=>{ crits[c.key] = score; });
+      const ok = await saveReview(p.id, {pastryKey, crits, score, text: "", photos: []});
+      if(ok){
+        toast("Voto salvato! Vuoi aggiungere dettagli? Usa il form qui sotto.");
+        refreshMarkers();
+        openPlace(p);
+      }
+    });
+  }
+
   const box = document.getElementById("formbox");
   if(!box) return;
 
