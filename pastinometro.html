@@ -14,7 +14,7 @@
 <meta name="apple-mobile-web-app-title" content="Pastinòmetro"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta property="og:title" content="Il Pastinòmetro"/>
-<meta property="og:description" content="Censimento e recensione delle pastine padovane"/>
+<meta property="og:description" content="Censimento collaborativo e recensione critica delle pastine padovane"/>
 <meta property="og:type" content="website"/>
 <meta property="og:image" content="/static/icon.svg"/>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -1192,7 +1192,9 @@ async function sset(k, v, shared=false){
     });
     if(!r.ok){
       if(r.status === 401){ toast("Sessione scaduta — accedi di nuovo"); showLogin(); }
-      else if(r.status === 413){ toast("File troppo grande (max 6 MB)"); }
+      else if(r.status === 413){ toast("Contenuto troppo grande"); }
+      else if(r.status === 403){ toast("Non puoi modificare questo contenuto"); }
+      else if(r.status === 429){ toast("Troppe modifiche in poco tempo, riprova fra un attimo"); }
       else{ console.warn("storage set failed", r.status); }
       return false;
     }
@@ -2658,9 +2660,12 @@ function renderReview(r){
     return v!==undefined ? `<span>${c.label.toLowerCase()} <b>${v.toFixed(1)}</b></span>` : '';
   }).filter(Boolean).join("");
   const canDel = STATE.currentUser && STATE.currentUser.id === r.userId;
-  const photos = (r.photos||[]).map(ph=>
-    `<img src="${ph}" onclick="viewImage('${ph.replace(/'/g,"\\'")}')"/>`
-  ).join("");
+  const photos = (r.photos||[]).map(ph=>{
+    const safe = safePhotoUrl(ph);
+    if(!safe) return "";
+    const a = escapeAttr(safe);
+    return `<img src="${a}" class="rev-photo-thumb" data-full="${a}" alt="foto recensione"/>`;
+  }).join("");
   const initial = r.userName.slice(0,1).toUpperCase();
   return `
     <div class="review">
@@ -2689,8 +2694,8 @@ window.editReviewById = (rid, pid)=>{
   if(sel){
     sel.value = rev.pastryKey;
     sel.dispatchEvent(new Event("change"));
-    // pre-carica le foto esistenti come pendingPhotos
-    pendingPhotos = (rev.photos || []).slice();
+    // pre-carica le foto esistenti come pendingPhotos (solo URL valide)
+    pendingPhotos = (rev.photos || []).map(safePhotoUrl).filter(Boolean);
     const previews = document.getElementById("photo-previews");
     if(previews){
       previews.innerHTML = "";
@@ -2711,12 +2716,22 @@ window.editReviewById = (rid, pid)=>{
 };
 
 window.viewImage = (src)=>{
+  const safe = safePhotoUrl(src);
+  if(!safe) return;
   const d = document.createElement("div");
   d.className = "imgview";
-  d.innerHTML = `<img src="${src}"/>`;
+  const img = document.createElement("img");
+  img.src = safe;          // assegnazione diretta: nessun parsing HTML
+  d.appendChild(img);
   d.addEventListener("click",()=>d.remove());
   document.body.appendChild(d);
 };
+// Click sulle miniature foto delle recensioni — delega globale (le recensioni
+// sono inserite via innerHTML, quindi niente onclick inline per evitare XSS).
+document.addEventListener("click", (e)=>{
+  const t = e.target.closest && e.target.closest(".rev-photo-thumb");
+  if(t && t.dataset.full) viewImage(t.dataset.full);
+});
 
 // ====== AGGIUNGI LUOGO ======
 let pickedCoord = null;     // {lat, lon} scelte dalla mappa
@@ -3277,6 +3292,16 @@ function escapeHtml(s){
   return String(s).replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"})[c]);
 }
 function escapeAttr(s){ return escapeHtml(s) }
+
+// Whitelist delle URL foto: solo /photos/<file>, data:image/... base64, o http(s)://
+// Tutto il resto e' considerato non sicuro e scartato (difesa anti-XSS).
+function safePhotoUrl(u){
+  u = String(u||"").trim();
+  if(/^\/photos\/[A-Za-z0-9._-]+$/.test(u)) return u;
+  if(/^data:image\/(png|jpe?g|webp|gif);base64,[A-Za-z0-9+/=\s]+$/.test(u)) return u;
+  if(/^https?:\/\/[^\s"'<>]+$/.test(u)) return u;
+  return null;
+}
 
 async function compressImage(file, maxDim=800, quality=0.75){
   return new Promise((resolve, reject)=>{

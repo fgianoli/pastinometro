@@ -9,6 +9,8 @@ Espone:
 from __future__ import annotations
 
 import hashlib
+import html as html_lib
+import io
 import json
 import os
 import re
@@ -18,6 +20,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from functools import lru_cache
 from pathlib import Path
 from typing import Optional
 
@@ -25,7 +28,11 @@ import bcrypt
 from fastapi import FastAPI, File, HTTPException, Query, Request, Response, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from PIL import Image, ImageDraw, ImageFont, ImageOps
 from pydantic import BaseModel, Field
+
+# Guardia anti decompression-bomb: rifiuta immagini con troppi pixel.
+Image.MAX_IMAGE_PIXELS = 50_000_000
 
 # ---- Config ----
 
@@ -55,8 +62,12 @@ BASE_URL = os.environ.get("BASE_URL", "").rstrip("/") or None
 RESET_TOKEN_TTL = 30 * 60  # 30 minuti
 
 USERNAME_RE = re.compile(r"^[a-zA-Z0-9._-]{2,30}$")
-MAX_VALUE_BYTES = 6 * 1024 * 1024  # 6 MB per chiave (basta per recensioni con foto compresse)
-MAX_PHOTO_BYTES = 4 * 1024 * 1024  # 4 MB per foto (gia' compresse client-side)
+# Le foto stanno su filesystem: i valori KV (recensioni, luoghi, ...) sono testo
+# piccolo. 2 MB lascia margine per editare vecchie recensioni con foto base64
+# legacy, ma riduce di 3x la superficie di disk-fill rispetto ai 6 MB iniziali.
+MAX_VALUE_BYTES = 2 * 1024 * 1024
+MAX_PHOTO_BYTES = 8 * 1024 * 1024  # 8 MB input grezzo (viene poi ricodificato e ridotto)
+PHOTO_MAX_DIM = 1600               # lato massimo dopo ricodifica
 PHOTOS_DIR = DATA_DIR / "photos"
 PHOTOS_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -209,6 +220,17 @@ def ensure_admin() -> None:
 # ---- App ----
 
 app = FastAPI(title="Pastinometro", docs_url="/api/docs", openapi_url="/api/openapi.json")
+
+
+@app.middleware("http")
+async def _security_headers(request: Request, call_next):
+    resp = await call_next(request)
+    # nosniff e' la difesa chiave: impedisce ai browser di interpretare una
+    # foto (servita da /photos/) come HTML eseguibile via content-sniffing.
+    resp.headers.setdefault("X-Content-Type-Options", "nosniff")
+    resp.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+    resp.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    return resp
 
 
 @app.on_event("startup")
@@ -550,19 +572,43 @@ def kv_get(request: Request, key: str = Query(...), shared: bool = Query(True)):
     return {"value": row["value"], "updatedAt": row["updated_at"]}
 
 
+# Chiavi shared multi-writer per design: chiunque loggato puo' aggiornarle.
+#  - avail:*   segnalazioni di disponibilita' (last-write-wins)
+#  - cat:*     override di categoria di un POI
+#  - status:*  stato del locale (aperto/chiuso/trasferito)
+# Tutte le altre (review:*, place:*, pastry:*) sono owner-locked in update.
+_MULTIWRITER_PREFIXES = ("avail:", "cat:", "status:")
+
+
+def _can_write_shared(user: dict, key: str, owner_id: Optional[str]) -> bool:
+    if key.startswith(_MULTIWRITER_PREFIXES):
+        return True
+    if user["is_admin"]:
+        return True
+    if owner_id is None:  # chiavi pre-migration (legacy)
+        return True
+    return owner_id == user["id"]
+
+
 @app.put("/api/kv")
 def kv_put(payload: KvPut, request: Request, key: str = Query(...), shared: bool = Query(True)):
     _validate_key(key)
     if len(payload.value.encode("utf-8")) > MAX_VALUE_BYTES:
         raise HTTPException(413, "valore troppo grande")
     user = _require_user(request)
+    _check_rate(request, "kv-put", max_calls=120, period_sec=60)
     now = int(time.time())
     conn = get_db()
     try:
         if shared:
-            # ON CONFLICT non aggiorna owner_id: il primo writer rimane il proprietario.
-            # Per chiavi avail:* (multi-writer per design) altri utenti possono PUT
-            # nuovi valori, ma solo il primo writer (o admin) puo' DELETE.
+            # Sulla UPDATE di una chiave gia' esistente verifichiamo l'ownership:
+            # un utente non puo' sovrascrivere recensioni/luoghi/pastine altrui.
+            # ON CONFLICT non tocca owner_id: il primo writer resta proprietario.
+            existing = conn.execute(
+                "SELECT owner_id FROM kv_shared WHERE key = ?", (key,)
+            ).fetchone()
+            if existing is not None and not _can_write_shared(user, key, existing["owner_id"]):
+                raise HTTPException(403, "solo l'autore o un admin possono modificare questa risorsa")
             conn.execute(
                 "INSERT INTO kv_shared(key, value, owner_id, updated_at) VALUES (?,?,?,?) "
                 "ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at",
@@ -852,15 +898,227 @@ async def upload_photo(request: Request, file: UploadFile = File(...)):
         raise HTTPException(400, "file vuoto")
     if len(contents) > MAX_PHOTO_BYTES:
         raise HTTPException(413, f"foto troppo grande (max {MAX_PHOTO_BYTES // (1024*1024)} MB)")
-    ext = _detect_image_ext(contents)
-    if not ext:
+    if not _detect_image_ext(contents):
         raise HTTPException(400, "formato non supportato (JPG, PNG o WebP)")
-    h = hashlib.sha256(contents).hexdigest()[:32]
-    fname = f"{h}{ext}"
+    # Ri-codifica con Pillow: valida che sia davvero un'immagine, normalizza
+    # l'orientamento EXIF, rimuove TUTTI i metadati (privacy + anti-polyglot)
+    # e ri-emette come JPEG. Cosi' un file "polyglot" (immagine valida + HTML)
+    # non puo' essere servito come HTML eseguibile.
+    try:
+        im = Image.open(io.BytesIO(contents))
+        im = ImageOps.exif_transpose(im)
+        im = im.convert("RGB")
+        im.thumbnail((PHOTO_MAX_DIM, PHOTO_MAX_DIM))
+        out = io.BytesIO()
+        im.save(out, format="JPEG", quality=82, optimize=True)
+        data = out.getvalue()
+    except Exception:
+        raise HTTPException(400, "immagine non valida o corrotta")
+    h = hashlib.sha256(data).hexdigest()[:32]  # content-addressed sull'output
+    fname = f"{h}.jpg"
     path = PHOTOS_DIR / fname
     if not path.exists():
-        path.write_bytes(contents)
-    return {"url": f"/photos/{fname}", "size": len(contents)}
+        path.write_bytes(data)
+    return {"url": f"/photos/{fname}", "size": len(data)}
+
+
+# ---- OG image + meta dinamici per share su social/chat ----
+
+CAT_LABEL_PY = {"bakery": "Forno", "pastry": "Pasticceria", "cafe": "Caffè", "bar": "Bar"}
+
+# Font DejaVu installati via apt (vedi Dockerfile)
+_FONT_PATHS = {
+    "serif":        "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf",
+    "serif_bold":   "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf",
+    "serif_italic": "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Italic.ttf",
+    "sans":         "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+}
+
+
+def _font(kind: str, size: int):
+    path = _FONT_PATHS.get(kind)
+    if path and os.path.exists(path):
+        try:
+            return ImageFont.truetype(path, size)
+        except Exception:
+            pass
+    return ImageFont.load_default()
+
+
+@lru_cache(maxsize=1)
+def _embedded_places_index() -> dict:
+    """Estrae RAW_PLACES dall'HTML una volta sola. Fallback per i luoghi
+    che non sono ancora nel snapshot OSM e non sono user-added."""
+    try:
+        text = HTML_PATH.read_text(encoding="utf-8")
+    except Exception:
+        return {}
+    m = re.search(r"const RAW_PLACES = (\[\[.*?\]\]);", text, re.DOTALL)
+    if not m:
+        return {}
+    try:
+        arr = json.loads(m.group(1))
+    except Exception:
+        return {}
+    out = {}
+    for r in arr:
+        if isinstance(r, list) and len(r) >= 5:
+            pid = r[0]
+            out[pid] = {
+                "id": pid, "name": r[1], "lat": r[2], "lon": r[3],
+                "category": r[4],
+                "address": r[5] if len(r) > 5 else "",
+            }
+    return out
+
+
+def _resolve_place(place_id: str) -> Optional[dict]:
+    """Cerca un place per id, in ordine: snapshot OSM, user-added, embedded HTML."""
+    # 1. snapshot OSM (se l'admin ha mai fatto un reimport)
+    osm = _load_osm_file()
+    for p in osm.get("places", []):
+        if p.get("id") == place_id:
+            return p
+    # 2. user-added in kv_shared
+    conn = get_db()
+    try:
+        row = conn.execute(
+            "SELECT value FROM kv_shared WHERE key = ?", (f"place:{place_id}",)
+        ).fetchone()
+    finally:
+        conn.close()
+    if row:
+        try:
+            return json.loads(row["value"])
+        except Exception:
+            pass
+    # 3. embedded HTML fallback
+    return _embedded_places_index().get(place_id)
+
+
+def _place_stats(place_id: str) -> dict:
+    """Aggregati dalle recensioni di questo place."""
+    conn = get_db()
+    try:
+        # escape per LIKE: gli id sono alfanumerici quindi non serve escape, ma per sicurezza
+        pat = "review:" + place_id.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + ":%"
+        rows = conn.execute(
+            "SELECT value FROM kv_shared WHERE key LIKE ? ESCAPE '\\'", (pat,)
+        ).fetchall()
+    finally:
+        conn.close()
+    scores = []
+    pastry_scores: "dict[str, list[float]]" = {}
+    for r in rows:
+        try:
+            d = json.loads(r["value"])
+            s = d.get("score")
+            if isinstance(s, (int, float)):
+                scores.append(float(s))
+                pk = d.get("pastryKey")
+                if pk:
+                    pastry_scores.setdefault(pk, []).append(float(s))
+        except Exception:
+            pass
+    avg = sum(scores) / len(scores) if scores else None
+    n = len(scores)
+    top_pastry = None
+    if pastry_scores:
+        ranked = sorted(
+            pastry_scores.items(),
+            key=lambda kv: (-(sum(kv[1]) / len(kv[1])), -len(kv[1])),
+        )
+        top_pastry = ranked[0][0] if ranked else None
+    return {"avg": avg, "n": n, "top_pastry": top_pastry}
+
+
+def _make_og_image(place: dict, stats: dict) -> Image.Image:
+    W, H = 1200, 630
+    BG = (243, 237, 224)
+    INK = (42, 30, 20)
+    INK_SOFT = (90, 71, 53)
+    ACCENT = (139, 30, 46)
+    PAPER = (250, 244, 230)
+
+    img = Image.new("RGB", (W, H), BG)
+    draw = ImageDraw.Draw(img)
+
+    # banda granato in alto
+    draw.rectangle((0, 0, W, 76), fill=ACCENT)
+    f_kicker = _font("serif_italic", 26)
+    draw.text((54, 24), "IL PASTINÒMETRO · PADOVA", fill=PAPER, font=f_kicker)
+
+    # nome locale (a sinistra)
+    f_name = _font("serif_bold", 70)
+    name = place.get("name", "")
+    if len(name) > 28:
+        name = name[:26] + "…"
+    draw.text((54, 130), name, fill=INK, font=f_name)
+
+    # categoria
+    cat_label = CAT_LABEL_PY.get(place.get("category"), "Locale")
+    f_cat = _font("serif_italic", 30)
+    draw.text((54, 220), cat_label, fill=INK_SOFT, font=f_cat)
+
+    # indirizzo (se c'è)
+    addr = (place.get("address") or "").strip()
+    if addr:
+        f_addr = _font("sans", 22)
+        if len(addr) > 50:
+            addr = addr[:48] + "…"
+        draw.text((54, 270), addr, fill=INK_SOFT, font=f_addr)
+
+    # voto (a destra)
+    avg = stats["avg"]
+    n = stats["n"]
+    cx, cy, r = 950, 380, 160
+    if avg is not None:
+        # cerchio
+        draw.ellipse((cx - r, cy - r, cx + r, cy + r), outline=ACCENT, width=8)
+        # numerone voto
+        f_score = _font("serif_bold", 170)
+        text_score = f"{avg:.1f}"
+        bbox = draw.textbbox((0, 0), text_score, font=f_score)
+        tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+        draw.text((cx - tw // 2, cy - th // 2 - 18), text_score, fill=ACCENT, font=f_score)
+        # /10
+        f_small = _font("serif_italic", 28)
+        bbox2 = draw.textbbox((0, 0), "/ 10", font=f_small)
+        draw.text((cx - (bbox2[2] - bbox2[0]) // 2, cy + 76), "/ 10", fill=INK_SOFT, font=f_small)
+        # numero recensioni
+        f_n = _font("serif_italic", 28)
+        rev_text = f"{n} recensione" if n == 1 else f"{n} recensioni"
+        draw.text((54, H - 100), rev_text, fill=ACCENT, font=f_n)
+        if stats.get("top_pastry"):
+            f_tp = _font("serif_italic", 22)
+            draw.text(
+                (54, H - 60),
+                f"miglior pastina recensita: {stats['top_pastry']}",
+                fill=INK_SOFT, font=f_tp,
+            )
+    else:
+        f_no = _font("serif_italic", 36)
+        draw.text((54, 380), "Nessuna recensione — sii il primo", fill=ACCENT, font=f_no)
+
+    # banda granato in basso
+    draw.rectangle((0, H - 12, W, H), fill=ACCENT)
+    return img
+
+
+@app.get("/og/{place_id}.png")
+def og_image(place_id: str):
+    place = _resolve_place(place_id)
+    if not place:
+        raise HTTPException(404, "luogo non trovato")
+    stats = _place_stats(place_id)
+    img = _make_og_image(place, stats)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG", optimize=True)
+    return Response(
+        content=buf.getvalue(),
+        media_type="image/png",
+        headers={"Cache-Control": "public, max-age=300"},
+    )
 
 
 # ---- Static / health ----
@@ -872,9 +1130,54 @@ if STATIC_DIR.is_dir():
 app.mount("/photos", StaticFiles(directory=str(PHOTOS_DIR)), name="photos")
 
 
-@app.get("/")
-def index():
-    return FileResponse(HTML_PATH)
+_OG_RE = re.compile(
+    r'<meta property="og:title".*?<meta property="og:image"[^>]*/>',
+    re.DOTALL,
+)
+
+
+@app.get("/", response_class=Response)
+def index(request: Request, p: Optional[str] = Query(None)):
+    """Serve l'HTML; quando c'e' ?p=<id>, sostituisce il blocco OG con tag
+    per quel locale (titolo, descrizione con voto e numero recensioni,
+    immagine generata da /og/<id>.png). I crawler social leggeranno il
+    nuovo blocco; per i browser e' invisibile."""
+    try:
+        text = HTML_PATH.read_text(encoding="utf-8")
+    except Exception:
+        raise HTTPException(500, "errore caricamento pagina")
+    if p:
+        place = _resolve_place(p)
+        if place:
+            stats = _place_stats(p)
+            base_url = (BASE_URL or str(request.base_url).rstrip("/")).rstrip("/")
+            title = f"{place.get('name','Locale')} · Il Pastinòmetro"
+            parts = []
+            if stats["avg"] is not None:
+                parts.append(f"{stats['avg']:.1f}/10")
+                parts.append(f"{stats['n']} {'recensione' if stats['n']==1 else 'recensioni'}")
+            else:
+                parts.append("ancora da scoprire")
+            cat_label = CAT_LABEL_PY.get(place.get("category"), "Locale")
+            parts.append(cat_label)
+            description = " · ".join(parts)
+            og_image_url = f"{base_url}/og/{p}.png"
+            og_url = f"{base_url}/?p={urllib.parse.quote(p)}"
+            replacement = (
+                f'<meta property="og:title" content="{html_lib.escape(title)}"/>'
+                f'<meta property="og:description" content="{html_lib.escape(description)}"/>'
+                f'<meta property="og:type" content="website"/>'
+                f'<meta property="og:url" content="{html_lib.escape(og_url)}"/>'
+                f'<meta property="og:image" content="{html_lib.escape(og_image_url)}"/>'
+                f'<meta property="og:image:width" content="1200"/>'
+                f'<meta property="og:image:height" content="630"/>'
+                f'<meta name="twitter:card" content="summary_large_image"/>'
+                f'<meta name="twitter:title" content="{html_lib.escape(title)}"/>'
+                f'<meta name="twitter:description" content="{html_lib.escape(description)}"/>'
+                f'<meta name="twitter:image" content="{html_lib.escape(og_image_url)}"/>'
+            )
+            text = _OG_RE.sub(replacement, text, count=1)
+    return Response(content=text, media_type="text/html; charset=utf-8")
 
 
 @app.get("/manifest.webmanifest")
